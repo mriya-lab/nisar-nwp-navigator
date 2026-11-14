@@ -1,0 +1,16 @@
+# Ignore raw data granules
+data/raw/*
+!data/raw/.gitkeep
+
+# Ignore processed data outputs
+data/processed/*
+!data/processed/.gitkeep
+data/gis/*
+!data/gis/.gitkeep
+
+# Standard Python ignores
+__pycache__/
+*.pyc
+.env
+venv/
+.streamlit/
