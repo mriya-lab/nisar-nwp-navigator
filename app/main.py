@@ -18,7 +18,7 @@ st.caption("Antigravity Maritime Tactical Routing Engine — Powered by NISAR Ra
 st.sidebar.header("Control Panel")
 corridor_selection = st.sidebar.selectbox(
     "Select Shipping Corridor",
-    ["NORDREG Deep Water Route", "Amundsen Gulf / Dolphin & Union Strait", "Lancaster Sound Entrance"]
+    ["NORDREG Deep Water Route", "Lancaster Sound Entrance", "Amundsen Gulf / Dolphin & Union Strait"]
 )
 
 ice_class = st.sidebar.select_slider(
@@ -37,11 +37,39 @@ col1, col2 = st.columns([3, 1])
 with col1:
     st.subheader("Tactical Split-Screen Corridor Evaluation")
     
-    # Initialize high-performance leafmap engine focused on the Canadian Arctic Archipelago
+    # Initialize leafmap engine centered on Canadian Arctic Archipelago
     m = leafmap.Map(center=[74.5, -95.0], zoom=4, height=600)
     
-    # Placeholder for loading GIS overlays and Raster layers
-    # m.add_geojson("data/gis/nordreg_corridors.geojson", layer_name="NORDREG Routes")
+    # Load and overlay the GeoJSON routes if the file exists
+    geojson_path = "data/gis/nordreg_corridors.geojson"
+    if os.path.exists(geojson_path):
+        with open(geojson_path, "r") as f:
+            geojson_data = json.load(f)
+        
+        # Filter the GeoJSON features based on sidebar selection for explicit highlighting
+        filtered_features = [
+            f for f in geojson_data["features"] 
+            if f["properties"]["name"] == corridor_selection
+        ]
+        
+        if filtered_features:
+            highlighted_geojson = {
+                "type": "FeatureCollection",
+                "features": filtered_features
+            }
+            # Add selected route styled with a prominent bright color
+            m.add_geojson(
+                highlighted_geojson, 
+                layer_name=f"Active: {corridor_selection}",
+                style={"color": "#00FFCC", "weight": 5, "opacity": 0.9}
+            )
+        
+        # Overlay the full base transit grid behind it
+        m.add_geojson(
+            geojson_data, 
+            layer_name="All NORDREG Corridors",
+            style={"color": "#666666", "weight": 2, "opacity": 0.5}
+        )
     
     m.to_streamlit()
 
@@ -56,7 +84,6 @@ with col2:
     with st.container(border=True):
         st.markdown("**Backscatter Intensity Histogram**")
         st.caption("Distribution across current corridor bounding box (dB)")
-        # Placeholder for st.bar_chart or st.pyplot distribution tracking
         st.info("Awaiting pipeline/processed raster data to plot distribution.")
 
 # Footer Manifest Monitor
