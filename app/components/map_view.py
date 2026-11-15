@@ -23,22 +23,28 @@ def create_tactical_folium_map(
     """
     Constructs an interactive Folium Map centered on Barrow Strait.
     """
-    # Barrow Strait tactical center
-    center_lat = 74.48
-    center_lon = -94.50
+    # Frame map on Barrow Strait shipping corridor and active NISAR swath
+    swath_center = scene_dataset.get("swath_center", [74.35, -93.40])
+    bounds = scene_dataset["bounds"]
+    lon_span = abs(bounds[1][1] - bounds[0][1])
+    if lon_span > 10.0:
+        center_lat = (swath_center[0] * 0.35) + (74.35 * 0.65)
+        center_lon = (swath_center[1] * 0.35) + (-93.40 * 0.65)
+        zoom_start = 6
+    else:
+        center_lat = 74.35
+        center_lon = -93.40
+        zoom_start = 7
 
     # Base map using satellite imagery
     m = folium.Map(
         location=[center_lat, center_lon],
-        zoom_start=7,
+        zoom_start=zoom_start,
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri World Imagery",
         name="Satellite Basemap",
         control_scale=True
     )
-
-    # 1. Overlay Radar Raster
-    bounds = scene_dataset["bounds"]
 
     if radar_mode == "Dual-Pol False-Color RGB (HH/HV)":
         folium.raster_layers.ImageOverlay(

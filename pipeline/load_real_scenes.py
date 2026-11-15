@@ -1,12 +1,12 @@
 """
 pipeline/load_real_scenes.py
-Downloads selected NISAR L2 GCOV granules over Barrow Strait from ASF Vertex
-and processes them through the canonical pipeline/fetch_and_process.py engine.
+Processes local NISAR L2 GCOV granules in data/raw/ (or downloads from ASF Vertex when
+requested) using land-masked, calibrated open-water/FYI/MYI thresholds and updates
+data/processed/manifest.json.
 """
 
 import os
 import sys
-import asf_search as asf
 
 # Ensure parent directory is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -33,6 +33,21 @@ def total_bytes(obj) -> int:
 def main():
     os.makedirs(RAW_DIR, exist_ok=True)
     os.makedirs(PROCESSED_DIR, exist_ok=True)
+
+    raw_files = sorted(f for f in os.listdir(RAW_DIR) if f.endswith(".h5") or f.endswith(".hdf5"))
+
+    # If local .h5 files exist and no explicit ASF indices were passed, process all local granules
+    if raw_files and len(sys.argv) < 2:
+        print(f"Found {len(raw_files)} local NISAR HDF5 granule(s) in {RAW_DIR}:")
+        for fname in raw_files:
+            gid = os.path.splitext(fname)[0]
+            h5_path = os.path.join(RAW_DIR, fname)
+            rgb_path, hazard_path, meta = hdf5_to_cog(h5_path, gid)
+            append_to_manifest(gid, rgb_path, hazard_path, meta)
+        print(f"\nDone! Processed {len(raw_files)} local granule(s) into {MANIFEST_PATH}")
+        return
+
+    import asf_search as asf
 
     results = asf.search(
         dataset="NISAR",

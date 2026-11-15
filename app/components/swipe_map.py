@@ -22,19 +22,33 @@ def create_swipe_comparison_map(
     """
     Constructs an interactive split-screen swipe map comparing two dates/stages.
     """
-    center_lat = 74.48
-    center_lon = -94.50
+    left_bounds = left_dataset["bounds"]
+    right_bounds = right_dataset["bounds"]
+    left_center = left_dataset.get("swath_center", [74.35, -93.40])
+    right_center = right_dataset.get("swath_center", [74.35, -93.40])
+    lon_span = max(
+        abs(left_bounds[1][1] - left_bounds[0][1]),
+        abs(right_bounds[1][1] - right_bounds[0][1]),
+    )
+    if lon_span > 10.0:
+        # Frame Barrow Strait corridor and swath overlap consistently with Tactical Route Map
+        avg_lat = (left_center[0] + right_center[0]) / 2.0
+        avg_lon = (left_center[1] + right_center[1]) / 2.0
+        center_lat = (avg_lat * 0.35) + (74.35 * 0.65)
+        center_lon = (avg_lon * 0.35) + (-93.40 * 0.65)
+        zoom_start = 6
+    else:
+        center_lat = 74.35
+        center_lon = -93.40
+        zoom_start = 7
 
     m = folium.Map(
         location=[center_lat, center_lon],
-        zoom_start=7,
+        zoom_start=zoom_start,
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri World Imagery",
         name="Satellite Basemap"
     )
-
-    left_bounds = left_dataset["bounds"]
-    right_bounds = right_dataset["bounds"]
 
     if layer_mode == "Dual-Pol False-Color RGB (HH/HV)":
         left_url = left_dataset["rgb_data_url"]
@@ -77,28 +91,85 @@ def create_swipe_comparison_map(
             name=r_name
         ).add_to(m)
 
-    # Patch L.ImageOverlay.prototype.getContainer -> getElement so leaflet-side-by-side
-    # can clip ImageOverlay rasters cleanly alongside TileLayers
-    m.get_root().html.add_child(folium.Element("""
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        if (window.L && L.ImageOverlay && !L.ImageOverlay.prototype.getContainer) {
-            L.ImageOverlay.prototype.getContainer = function() {
-                return this.getElement();
-            };
-        }
-    });
-    if (window.L && L.ImageOverlay && !L.ImageOverlay.prototype.getContainer) {
-        L.ImageOverlay.prototype.getContainer = function() {
-            return this.getElement();
-        };
-    }
-    </script>
-    """))
-
     # Add SideBySide split controller
     sbs = plugins.SideBySideLayers(layer_left=layer_left, layer_right=layer_right)
     sbs.add_to(m)
+
+    # Patch L.ImageOverlay.prototype.getContainer AND L.Control.SideBySide.prototype._updateClip
+    # so CSS clip: rect(...) accounts for each ImageOverlay element's own translate3d(pos.x, pos.y) offset
+    m.get_root().html.add_child(folium.Element("""
+    <script>
+    (function() {
+        function patchSideBySide() {
+            if (!window.L) return;
+            if (L.ImageOverlay && !L.ImageOverlay.prototype.getContainer) {
+                L.ImageOverlay.prototype.getContainer = function() {
+                    return this.getElement();
+                };
+            }
+            if (L.Control && L.Control.SideBySide && !L.Control.SideBySide.prototype._patchedForImageOverlay) {
+                L.Control.SideBySide.prototype._patchedForImageOverlay = true;
+                var origAddEvents = L.Control.SideBySide.prototype._addEvents;
+                L.Control.SideBySide.prototype._addEvents = function() {
+                    origAddEvents.apply(this, arguments);
+                    if (this._map) {
+                        this._map.on("zoom viewreset zoomend moveend", this._updateClip, this);
+                    }
+                };
+                L.Control.SideBySide.prototype._updateClip = function() {
+                    var map = this._map;
+                    if (!map) return;
+                    var nw = map.containerPointToLayerPoint([0, 0]);
+                    var se = map.containerPointToLayerPoint(map.getSize());
+                    var clipX = nw.x + this.getPosition();
+                    var dividerX = this.getPosition();
+                    this._divider.style.left = dividerX + "px";
+                    this.fire("dividermove", {x: dividerX});
+
+                    if (this._leftLayer && this._leftLayer.getContainer) {
+                        var elL = this._leftLayer.getContainer();
+                        if (elL) {
+                            var posL = L.DomUtil.getPosition(elL) || {x: 0, y: 0};
+                            elL.style.clip = "rect(" + [
+                                nw.y - posL.y,
+                                clipX - posL.x,
+                                se.y - posL.y,
+                                nw.x - posL.x
+                            ].join("px,") + "px)";
+                        }
+                    }
+                    if (this._rightLayer && this._rightLayer.getContainer) {
+                        var elR = this._rightLayer.getContainer();
+                        if (elR) {
+                            var posR = L.DomUtil.getPosition(elR) || {x: 0, y: 0};
+                            elR.style.clip = "rect(" + [
+                                nw.y - posR.y,
+                                se.x - posR.x,
+                                se.y - posR.y,
+                                clipX - posR.x
+                            ].join("px,") + "px)";
+                        }
+                    }
+                };
+            }
+            // Also refresh any already-instantiated Leaflet maps so initial clip is accurate
+            for (var k in window) {
+                try {
+                    if (k.indexOf("map_") === 0 && window[k] && window[k].fire) {
+                        window[k].fire("move");
+                    }
+                } catch (e) {}
+            }
+        }
+        patchSideBySide();
+        document.addEventListener("DOMContentLoaded", patchSideBySide);
+        window.addEventListener("load", function() {
+            patchSideBySide();
+            setTimeout(patchSideBySide, 150);
+        });
+    })();
+    </script>
+    """))
 
     plugins.Fullscreen(position="topleft").add_to(m)
 

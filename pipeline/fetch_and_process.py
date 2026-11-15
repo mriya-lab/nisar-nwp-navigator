@@ -16,6 +16,8 @@ import rasterio
 from rasterio.transform import from_origin
 from rasterio.warp import transform_bounds
 from typing import Tuple, Dict, Any, List
+import pyproj
+from global_land_mask import globe
 
 # Ensure parent directory is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -138,25 +140,38 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
     hh_db = np.where(valid_hh, 10.0 * np.log10(np.maximum(hh_raw, 1e-6)), -9999.0)
     hv_db = np.where(valid_hv, 10.0 * np.log10(np.maximum(hv_raw, 1e-6)), -9999.0)
 
-    # 3-Tier Ice Hazard classification:
-    # 0: nodata / masked, 1: Open Water, 2: First-Year Ice, 3: Multi-Year / Ridged Ice
+    # Mask land pixels to 0 (transparent) so Arctic islands never render as Multi-Year Ice
+    xs_sub = xs[::step]
+    ys_sub = ys[::step]
+    yy, xx = np.meshgrid(ys_sub, xs_sub, indexing="ij")
+    to_wgs84 = pyproj.Transformer.from_crs(crs_str, "EPSG:4326", always_xy=True)
+    lons_grid, lats_grid = to_wgs84.transform(xx, yy)
+    land_mask = globe.is_land(lats_grid, lons_grid)
+    valid_ocean = valid_mask & (~land_mask)
+
+    # 3-Tier Ice Hazard classification calibrated to NISAR L2 GCOV L-band radiometry:
+    # 0: nodata / land (transparent), 1: Open Water, 2: First-Year Ice, 3: Multi-Year / Ridged Ice
     hazard = np.zeros_like(hh_db, dtype=np.uint8)
-    hazard[valid_mask] = 1
-    hazard[valid_mask & ((hv_db >= -27.0) | (hh_db >= -20.0))] = 2
-    hazard[valid_mask & ((hv_db >= -19.5) & (hh_db >= -14.0))] = 3
+    open_water = valid_ocean & ((hh_db < -15.5) | (hv_db < -25.0))
+    myi_ridge = valid_ocean & ((hv_db > -18.5) | (hh_db > -9.5))
+    fyi_ice = valid_ocean & (~open_water) & (~myi_ridge)
 
-    # Normalized False-Color RGB composite:
-    # R: HHHH normalized [-28, -6] dB
-    # G: HVHV normalized [-34, -12] dB
-    # B: HH - HV difference normalized [4, 16] dB
-    r = np.clip((hh_db - (-28.0)) / ((-6.0) - (-28.0)), 0.0, 1.0) * 255.0
-    g = np.clip((hv_db - (-34.0)) / ((-12.0) - (-34.0)), 0.0, 1.0) * 255.0
+    hazard[open_water] = 1
+    hazard[fyi_ice] = 2
+    hazard[myi_ridge] = 3
+
+    # Normalized False-Color RGB composite (masked over land):
+    # R: HHHH normalized [-24, -6] dB
+    # G: HVHV normalized [-26, -12] dB
+    # B: HH - HV difference normalized [2, 12] dB
+    r = np.clip((hh_db - (-24.0)) / ((-6.0) - (-24.0)), 0.0, 1.0) * 255.0
+    g = np.clip((hv_db - (-26.0)) / ((-12.0) - (-26.0)), 0.0, 1.0) * 255.0
     diff = hh_db - hv_db
-    b = np.clip((diff - 4.0) / (16.0 - 4.0), 0.0, 1.0) * 255.0
+    b = np.clip((diff - 2.0) / (12.0 - 2.0), 0.0, 1.0) * 255.0
 
-    r[~valid_mask] = 0
-    g[~valid_mask] = 0
-    b[~valid_mask] = 0
+    r[~valid_ocean] = 0
+    g[~valid_ocean] = 0
+    b[~valid_ocean] = 0
 
     rgb = np.stack([r.astype(np.uint8), g.astype(np.uint8), b.astype(np.uint8)])
 
