@@ -1,0 +1,15 @@
+**
+!requirements.txt
+!.streamlit/
+!.streamlit/config.toml
+!app/
+!app/**
+!pipeline/
+!pipeline/**
+!data/
+!data/gis/
+!data/gis/*.geojson
+!data/processed/
+!data/processed/manifest.json
+!data/processed/*.tif
+**/__pycache__/
