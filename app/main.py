@@ -40,6 +40,11 @@ from app.components.swipe_map import (
     create_swipe_comparison_map,
     render_swipe_differential_metrics
 )
+from app.components.sar_physics import (
+    render_pillar_svg,
+    render_regime_photo_and_svg,
+    render_polarimetric_classification_chart,
+)
 
 # Page configuration
 st.set_page_config(
@@ -468,36 +473,36 @@ def _render_polarimetric_simulator():
 
     regimes = {
         "Calm Open Water": {
-            "hh_range": "-26.0 to -22.0 dB",
-            "hv_range": "-35.0 to -30.0 dB",
-            "ratio": "10 to 14 dB",
+            "hh_range": "-26 to -22 dB",
+            "hv_range": "-35 to -30 dB",
+            "ratio": "10–14 dB",
             "mechanism": "Specular reflection directs transmitted energy away from the antenna. Extremely low cross-pol return near sensor noise floor (NESZ).",
             "hazard_tier": "Tier 1: Open Water",
             "status": "NAVIGABLE for all vessels",
             "color": "#1565C0"
         },
         "Wind-Roughened Open Sea": {
-            "hh_range": "-19.0 to -16.0 dB",
-            "hv_range": "-32.0 to -28.0 dB",
-            "ratio": "12 to 15 dB",
+            "hh_range": "-19 to -16 dB",
+            "hv_range": "-32 to -28 dB",
+            "ratio": "12–15 dB",
             "mechanism": "Bragg resonant scattering from surface capillary waves elevates co-pol HHHH, but cross-pol HVHV remains suppressed due to lack of volume depolarization.",
             "hazard_tier": "Tier 1: Open Water",
             "status": "NAVIGABLE for all vessels",
             "color": "#1976D2"
         },
         "Smooth First-Year Ice (FYI)": {
-            "hh_range": "-19.0 to -16.0 dB",
-            "hv_range": "-27.0 to -23.0 dB",
-            "ratio": "7 to 10 dB",
+            "hh_range": "-16 to -12 dB",
+            "hv_range": "-25 to -20 dB",
+            "ratio": "7–10 dB",
             "mechanism": "High salinity (4-10 ppt) in young ice creates high dielectric loss, absorbing microwave energy and limiting penetration depth to a few centimeters.",
             "hazard_tier": "Tier 2: First-Year Ice",
             "status": "CAUTION for Standard Cargo, NAVIGABLE for PC6+",
             "color": "#00BCD4"
         },
         "Deformed / Ridged Multi-Year Ice (MYI)": {
-            "hh_range": "-12.0 to -8.0 dB",
-            "hv_range": "-17.5 to -13.5 dB",
-            "ratio": "4 to 7 dB",
+            "hh_range": "-12 to -8 dB",
+            "hv_range": "-18 to -14 dB",
+            "ratio": "4–7 dB",
             "mechanism": "Multi-year desalination leaves porous, bubble-filled low-loss ice matrix. L-band microwaves penetrate deep (1-2 m), undergoing severe volume depolarization. Pressure ridges cause massive double-bounce returns.",
             "hazard_tier": "Tier 3: Multi-Year / Ridged Ice",
             "status": "BLOCKED for Standard Cargo & unescorted PC6. Extreme hull breach hazard.",
@@ -525,9 +530,17 @@ def _render_polarimetric_simulator():
             with subcol3:
                 st.metric("HH / HV Difference", r_info["ratio"])
 
+            render_regime_photo_and_svg(selected_regime)
+
             st.markdown(f"**Electromagnetic Scattering Mechanism:**\n{r_info['mechanism']}")
-            st.markdown(f"**Hazard Classification:** `{r_info['hazard_tier']}`")
-            st.markdown(f"**Polar Code Implication:** `{r_info['status']}`")
+            st.markdown(f"**Hazard Classification:** `{r_info['hazard_tier']}` | **Polar Code Implication:** `{r_info['status']}`")
+
+    st.markdown("#### 🎯 2D Polarimetric Classification Space (`HHHH` vs. `HVHV` dB)")
+    st.caption(
+        "Shaded decision zones show the exact L-band dual-polarization thresholds used by `pipeline/fetch_and_process.py` "
+        "to classify Open Water, First-Year Ice, and Multi-Year / Ridged Ice. Selecting a regime above updates the live target marker."
+    )
+    render_polarimetric_classification_chart(selected_regime)
 
 
 if tab_physics.open:
@@ -540,6 +553,7 @@ if tab_physics.open:
         with c1:
             with st.container(border=True):
                 st.markdown("#### 1. 24 cm L-Band Penetration")
+                render_pillar_svg("snow_penetration")
                 st.markdown("""
                 **Wavelength Advantage:**
                 NISAR operates at **L-band (λ = 24 cm / 1.25 GHz)**. Unlike C-band (λ = 5.6 cm) or X-band (λ = 3.1 cm), 24 cm microwave signals penetrate dry Arctic snow covers (10–40 cm) with minimal attenuation. C-band scatters within the snow pack, mistaking snow roughness for ice deformation. NISAR interrogates the true underlying sea ice matrix.
@@ -547,6 +561,7 @@ if tab_physics.open:
         with c2:
             with st.container(border=True):
                 st.markdown("#### 2. HV Cross-Pol Discrimination")
+                render_pillar_svg("hv_depolarization")
                 st.markdown("""
                 **Depolarization & Volume Scattering:**
                 Desalinated Multi-Year Ice (MYI) features drained brine channels and dense air bubble pockets that induce intense multiple volume scattering. This depolarizes the transmitted horizontal wave, producing a powerful cross-polarized return (**HV ≈ -16 dB**), whereas First-Year Ice (**HV ≈ -25 dB**) and Open Water (**HV < -30 dB**) exhibit negligible volume depolarization.
@@ -554,6 +569,7 @@ if tab_physics.open:
         with c3:
             with st.container(border=True):
                 st.markdown("#### 3. Complete Polar Darkness")
+                render_pillar_svg("polar_night")
                 st.markdown("""
                 **All-Weather 24/7 Illumination:**
                 From late October through March, the Northwest Passage is plunged into **24-hour polar night** beneath pervasive cloud decks and blizzards. Optical sensors (MODIS, Landsat, Sentinel-2) are completely blind. Active SAR provides its own microwave illumination, ensuring uninterrupted navigational safety day and night.
