@@ -92,28 +92,34 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
         step = max(1, round(max_dim / 1000))
         
         # Extract backscatter fields (datasets are direct children of grid)
+        has_xpol = False
         if "HHHH" in grid and "HVHV" in grid:
             hh_raw = grid["HHHH"][::step, ::step]
             hv_raw = grid["HVHV"][::step, ::step]
             polarization = "DHDH"
+            has_xpol = True
         elif "VVVV" in grid and "VHVH" in grid:
             hh_raw = grid["VVVV"][::step, ::step]
             hv_raw = grid["VHVH"][::step, ::step]
             polarization = "DVDV"
+            has_xpol = True
         elif "VVVV" in grid:
             hh_raw = grid["VVVV"][::step, ::step]
             hv_raw = hh_raw * 0.15  # Synthetic cross-pol estimate for single-pol VVVV
             polarization = "VVVV"
+            has_xpol = False
         elif "HHHH" in grid:
             hh_raw = grid["HHHH"][::step, ::step]
             hv_raw = hh_raw * 0.15
             polarization = "HHHH"
+            has_xpol = False
         else:
             # Fallback to available numerical datasets
             avail_terms = [k for k in grid.keys() if isinstance(grid[k], h5py.Dataset) and k in ["HHHH", "HVHV", "VVVV", "VHVH"]]
             hh_raw = grid[avail_terms[0]][::step, ::step]
             hv_raw = grid[avail_terms[1]][::step, ::step] if len(avail_terms) > 1 else hh_raw * 0.15
             polarization = avail_terms[0] if avail_terms else "Unknown"
+            has_xpol = len(avail_terms) > 1
 
         # Timestamp and metadata
         ident = f.get("science/LSAR/identification")
@@ -155,9 +161,20 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
     # 3-Tier Ice Hazard classification calibrated to NISAR L2 GCOV L-band radiometry:
     # 0: nodata / land (transparent), 1: Open Water, 2: First-Year Ice, 3: Multi-Year / Ridged Ice
     hazard = np.zeros_like(hh_db, dtype=np.uint8)
-    open_water = valid_ocean & ((hh_db < -15.5) | (hv_db < -25.0))
-    myi_ridge = valid_ocean & ((hv_db > -18.5) | (hh_db > -9.5))
-    fyi_ice = valid_ocean & (~open_water) & (~myi_ridge)
+    is_summer = timestamp[5:7] in ("06", "07", "08", "09")
+    if not has_xpol and is_summer:
+        # Calibrate single-pol VVVV threshold for wind-roughened summer Bragg backscatter (~ -13 dB)
+        open_water = valid_ocean & (hh_db < -11.0)
+        myi_ridge = valid_ocean & (hh_db > -7.5)
+        fyi_ice = valid_ocean & (~open_water) & (~myi_ridge)
+        hh_rgb_db = hh_db - 4.5
+        hv_rgb_db = hv_db - 4.5
+    else:
+        open_water = valid_ocean & ((hh_db < -15.5) | (hv_db < -25.0))
+        myi_ridge = valid_ocean & ((hv_db > -18.5) | (hh_db > -9.5))
+        fyi_ice = valid_ocean & (~open_water) & (~myi_ridge)
+        hh_rgb_db = hh_db
+        hv_rgb_db = hv_db
 
     hazard[open_water] = 1
     hazard[fyi_ice] = 2
@@ -167,9 +184,9 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
     # R: HHHH normalized [-24, -6] dB
     # G: HVHV normalized [-26, -12] dB
     # B: HH - HV difference normalized [2, 12] dB
-    r = np.clip((hh_db - (-24.0)) / ((-6.0) - (-24.0)), 0.0, 1.0) * 255.0
-    g = np.clip((hv_db - (-26.0)) / ((-12.0) - (-26.0)), 0.0, 1.0) * 255.0
-    diff = hh_db - hv_db
+    r = np.clip((hh_rgb_db - (-24.0)) / ((-6.0) - (-24.0)), 0.0, 1.0) * 255.0
+    g = np.clip((hv_rgb_db - (-26.0)) / ((-12.0) - (-26.0)), 0.0, 1.0) * 255.0
+    diff = hh_rgb_db - hv_rgb_db
     b = np.clip((diff - 2.0) / (12.0 - 2.0), 0.0, 1.0) * 255.0
 
     r[~valid_ocean] = 0

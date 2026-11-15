@@ -224,9 +224,9 @@ def generate_hazard_rgba(hazard: np.ndarray) -> np.ndarray:
     h, w = hazard.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
 
-    # Class 1: Open Water (#1565C0, 75% opacity)
+    # Class 1: Open Water (Subtle translucent navy tint)
     mask1 = (hazard == 1)
-    rgba[mask1] = [21, 101, 192, 190]
+    rgba[mask1] = [15, 76, 129, 95]
 
     # Class 2: First-Year Ice (#00BCD4, 80% opacity)
     mask2 = (hazard == 2)

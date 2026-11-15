@@ -41,8 +41,8 @@ MOSAIC_WINDOWS: List[Dict[str, Any]] = [
         "stage_label": "2026-08-24 — Barrow Strait Regional Mosaic",
         "timestamp": "2026-08-24T08:45:50Z",
         "polarization": "Multi-Swath Dual/Single-Pol (DHDH + VVVV)",
-        "start": "2026-08-14T00:00:00Z",
-        "end": "2026-08-25T23:59:59Z",
+        "start": "2026-08-10T00:00:00Z",
+        "end": "2026-08-28T23:59:59Z",
         "hazard_merge_method": "first",
         "granule_filenames": [
             # East Barrow Strait & Lancaster Sound (Dual-Pol DHDH)
@@ -51,6 +51,8 @@ MOSAIC_WINDOWS: List[Dict[str, Any]] = [
             "NISAR_L2_PR_GCOV_028_043_D_049_4005_DHDH_A_20260816T042432_20260816T042441_P05023_N_P_J_001.h5",
             # Central Barrow Strait (Dual-Pol DHDH)
             "NISAR_L2_PR_GCOV_028_060_A_040_4005_DHDH_A_20260817T083748_20260817T083806_P05023_N_P_J_001.h5",
+            # Central-North Overlapping Frame on Track 072 (Single-Pol NASV)
+            "NISAR_L2_PR_GCOV_028_072_D_048_0005_NASV_A_20260818T044034_20260818T044107_P05023_N_F_J_001.h5",
             # West Barrow Strait / Viscount Melville Sound (Single-Pol NASV)
             "NISAR_L2_PR_GCOV_028_072_D_049_0005_NASV_A_20260818T044106_20260818T044136_P05023_N_F_J_001.h5",
         ],
@@ -178,12 +180,23 @@ def build_regional_mosaic(
 
     rgb_paths = []
     hazard_paths = []
+    print(f"[MOSAIC] Granule breakdown for {mosaic_id}:")
     for fn in window_cfg["granule_filenames"]:
         gid = os.path.splitext(fn)[0]
         if gid in granule_cogs:
-            r_path, h_path, _ = granule_cogs[gid]
+            r_path, h_path, meta = granule_cogs[gid]
             rgb_paths.append(r_path)
             hazard_paths.append(h_path)
+            with rasterio.open(h_path) as h_src:
+                h_arr = h_src.read(1)
+                tot = int(np.sum(h_arr > 0))
+                p1 = float(np.sum(h_arr == 1) / tot * 100.0) if tot > 0 else 0.0
+                p2 = float(np.sum(h_arr == 2) / tot * 100.0) if tot > 0 else 0.0
+                bbox_r = [round(float(x), 2) for x in meta.get("bbox_wgs84", [])]
+                print(
+                    f"  • {gid} | pol={meta.get('polarization')} | bbox={bbox_r} "
+                    f"| Tier 1 (Open Water)={p1:.1f}% vs Tier 2 (FYI)={p2:.1f}%"
+                )
 
     print(f"[MOSAIC] Stitching {len(hazard_paths)} passes into {mosaic_id} (method={hazard_method})...")
 

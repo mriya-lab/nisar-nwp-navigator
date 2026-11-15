@@ -218,7 +218,7 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
     h_h, h_w = hazard_display.shape
     hazard_rgba = np.zeros((h_h, h_w, 4), dtype=np.uint8)
     # Class 0: Nodata / Land (Transparent)
-    hazard_rgba[hazard_display == 1] = [21, 101, 192, 190]   # Open Water Blue
+    hazard_rgba[hazard_display == 1] = [15, 76, 129, 95]     # Open Water subtle translucent navy tint
     hazard_rgba[hazard_display == 2] = [0, 188, 212, 205]    # First-Year Ice Cyan
     hazard_rgba[hazard_display == 3] = [213, 0, 0, 230]      # Multi-Year Ice Red
     hazard_data_url = array_to_base64_png(hazard_rgba)
