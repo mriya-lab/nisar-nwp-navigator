@@ -147,6 +147,9 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
     to_wgs84 = pyproj.Transformer.from_crs(crs_str, "EPSG:4326", always_xy=True)
     lons_grid, lats_grid = to_wgs84.transform(xx, yy)
     land_mask = globe.is_land(lats_grid, lons_grid)
+    # Ensure narrow western Barrow Strait entrance channel off Russell Island (74.11-74.14N, -97.85 to -97.65W) is not clipped by 1km land mask
+    western_channel = (lats_grid >= 74.11) & (lats_grid <= 74.14) & (lons_grid >= -97.85) & (lons_grid <= -97.65)
+    land_mask = land_mask & (~western_channel)
     valid_ocean = valid_mask & (~land_mask)
 
     # 3-Tier Ice Hazard classification calibrated to NISAR L2 GCOV L-band radiometry:

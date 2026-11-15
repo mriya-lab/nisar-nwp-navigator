@@ -28,7 +28,8 @@ from app.components.telemetry_cards import (
     render_route_status_banner,
     render_kpi_metrics,
     render_ice_breakdown_bars,
-    render_corridor_comparison_table
+    render_corridor_comparison_table,
+    render_vessel_svg_card
 )
 from app.components.histograms import (
     render_backscatter_histograms,
@@ -130,6 +131,8 @@ selected_vessel = st.sidebar.selectbox(
     vessel_options,
     index=1  # Default to Polar Class 6
 )
+with st.sidebar:
+    render_vessel_svg_card(selected_vessel)
 
 # Observation Stage / Scene Selection
 scene_choices = {}
@@ -267,6 +270,7 @@ if tab_tactical.open:
                 st.markdown("**Vessel Capability Specifications**")
                 st.markdown(f"**Selected:** `{active_telemetry['vessel_class']}`")
                 st.caption(active_telemetry["designation"])
+                render_vessel_svg_card(active_telemetry["vessel_class"])
                 st.markdown(f"• **Baseline Speed:** `{active_telemetry['nominal_speed_knots']} knots`")
                 st.markdown(f"• **Effective Speed:** `{active_telemetry['effective_speed_knots']} knots`")
                 st.markdown(f"• **Excess Fuel Penalty:** `+{active_telemetry['excess_fuel_penalty_tons']} Tons`")

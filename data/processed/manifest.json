@@ -1,5 +1,89 @@
 [
     {
+        "granule_id": "NISAR_L2_GCOV_20260824_BARROW_MOSAIC",
+        "timestamp": "2026-08-24T08:45:50Z",
+        "polarization": "Multi-Swath Dual/Single-Pol (DHDH + VVVV)",
+        "stage_label": "2026-08-24 \u2014 Barrow Strait Regional Mosaic",
+        "bbox_wgs84": [
+            -100.5,
+            73.5,
+            -88.5,
+            75.6
+        ],
+        "rgb_path": "data/processed/NISAR_L2_GCOV_20260824_BARROW_MOSAIC_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_GCOV_20260824_BARROW_MOSAIC_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_GCOV_20261029_BARROW_MOSAIC",
+        "timestamp": "2026-10-29T04:41:06Z",
+        "polarization": "Multi-Swath Dual/Single-Pol (DHDH + VVVV)",
+        "stage_label": "2026-10-29 \u2014 Barrow Strait Regional Mosaic",
+        "bbox_wgs84": [
+            -100.5,
+            73.5,
+            -88.5,
+            75.6
+        ],
+        "rgb_path": "data/processed/NISAR_L2_GCOV_20261029_BARROW_MOSAIC_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_GCOV_20261029_BARROW_MOSAIC_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001",
+        "timestamp": "2026-08-14T05:46:12Z",
+        "polarization": "VVVV",
+        "stage_label": "2026-08-14 \u2014 NISAR VVVV (Track 015)",
+        "bbox_wgs84": [
+            -106.1915436677146,
+            73.7934065843058,
+            -85.44481209008389,
+            78.76751836267361
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_028_043_D_049_4005_DHDH_A_20260816T042432_20260816T042441_P05023_N_P_J_001",
+        "timestamp": "2026-08-16T04:24:32Z",
+        "polarization": "DHDH",
+        "stage_label": "2026-08-16 \u2014 NISAR DHDH (Track 043)",
+        "bbox_wgs84": [
+            -104.34857842875881,
+            72.16714269562436,
+            -88.35268012192816,
+            76.48582155926827
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_043_D_049_4005_DHDH_A_20260816T042432_20260816T042441_P05023_N_P_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_043_D_049_4005_DHDH_A_20260816T042432_20260816T042441_P05023_N_P_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_028_060_A_040_4005_DHDH_A_20260817T083748_20260817T083806_P05023_N_P_J_001",
+        "timestamp": "2026-08-17T08:37:48Z",
+        "polarization": "DHDH",
+        "stage_label": "2026-08-17 \u2014 NISAR DHDH (Track 060)",
+        "bbox_wgs84": [
+            -99.61524882932754,
+            71.26050982910714,
+            -85.66148899280081,
+            75.30095288895465
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_060_A_040_4005_DHDH_A_20260817T083748_20260817T083806_P05023_N_P_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_060_A_040_4005_DHDH_A_20260817T083748_20260817T083806_P05023_N_P_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_028_072_D_049_0005_NASV_A_20260818T044106_20260818T044136_P05023_N_F_J_001",
+        "timestamp": "2026-08-18T04:41:06Z",
+        "polarization": "VVVV",
+        "stage_label": "2026-08-18 \u2014 NISAR VVVV (Track 072)",
+        "bbox_wgs84": [
+            -108.5395030490455,
+            72.13376077558317,
+            -92.2942954289369,
+            76.507548655718
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_072_D_049_0005_NASV_A_20260818T044106_20260818T044136_P05023_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_072_D_049_0005_NASV_A_20260818T044106_20260818T044136_P05023_N_F_J_001_hazard.tif"
+    },
+    {
         "granule_id": "NISAR_L2_PR_GCOV_028_158_D_049_4005_DHDH_A_20260824T035109_20260824T035140_P05023_N_F_J_001",
         "timestamp": "2026-08-24T03:51:09Z",
         "polarization": "DHDH",
@@ -12,6 +96,34 @@
         ],
         "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_158_D_049_4005_DHDH_A_20260824T035109_20260824T035140_P05023_N_F_J_001_rgb.tif",
         "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_158_D_049_4005_DHDH_A_20260824T035109_20260824T035140_P05023_N_F_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_033_132_A_041_0005_NASV_A_20261021T082946_20261021T083016_P05023_N_F_J_001",
+        "timestamp": "2026-10-21T08:29:46Z",
+        "polarization": "VVVV",
+        "stage_label": "2026-10-21 \u2014 NISAR VVVV (Track 132)",
+        "bbox_wgs84": [
+            -103.38788283300343,
+            72.38179848899783,
+            -89.23697273485587,
+            76.27159408062323
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_033_132_A_041_0005_NASV_A_20261021T082946_20261021T083016_P05023_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_033_132_A_041_0005_NASV_A_20261021T082946_20261021T083016_P05023_N_F_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_033_173_D_048_0005_NASV_A_20261024T044854_20261024T044926_P05036_N_F_J_001",
+        "timestamp": "2026-10-24T04:48:54Z",
+        "polarization": "VVVV",
+        "stage_label": "2026-10-24 \u2014 NISAR VVVV (Track 173)",
+        "bbox_wgs84": [
+            -105.1657289753971,
+            72.86809241960654,
+            -87.28708579708315,
+            77.46831640698345
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_033_173_D_048_0005_NASV_A_20261024T044854_20261024T044926_P05036_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_033_173_D_048_0005_NASV_A_20261024T044854_20261024T044926_P05036_N_F_J_001_hazard.tif"
     },
     {
         "granule_id": "NISAR_L2_PR_GCOV_034_002_A_041_4005_DHDH_A_20261024T080448_20261024T080518_P05036_N_F_J_001",
@@ -28,18 +140,18 @@
         "hazard_path": "data/processed/NISAR_L2_PR_GCOV_034_002_A_041_4005_DHDH_A_20261024T080448_20261024T080518_P05036_N_F_J_001_hazard.tif"
     },
     {
-        "granule_id": "NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001",
-        "timestamp": "2026-08-14T05:46:12Z",
+        "granule_id": "NISAR_L2_PR_GCOV_034_072_D_049_0005_NASV_A_20261029T044106_20261029T044137_P05036_N_F_J_001",
+        "timestamp": "2026-10-29T04:41:06Z",
         "polarization": "VVVV",
-        "stage_label": "2026-08-14 \u2014 NISAR VVVV (Track 015)",
+        "stage_label": "2026-10-29 \u2014 NISAR VVVV (Track 072)",
         "bbox_wgs84": [
-            -106.1915436677146,
-            73.7934065843058,
-            -85.44481209008389,
-            78.76751836267361
+            -108.5395030490455,
+            72.13376077558317,
+            -92.2942954289369,
+            76.507548655718
         ],
-        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_rgb.tif",
-        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_hazard.tif"
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_034_072_D_049_0005_NASV_A_20261029T044106_20261029T044137_P05036_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_034_072_D_049_0005_NASV_A_20261029T044106_20261029T044137_P05036_N_F_J_001_hazard.tif"
     },
     {
         "granule_id": "NISAR_L2_PR_GCOV_035_017_A_040_0005_NASV_A_20261106T090230_20261106T090305_P05036_N_F_J_001",

@@ -167,3 +167,121 @@ def render_corridor_comparison_table(evaluations: List[Dict[str, Any]], active_r
                     f"🟢 **Tactical Clearance:** Both corridors are navigable. "
                     f"**Recommended Action:** Proceed via {shorter['route_info']['name']} for fastest passage ({shorter['telemetry']['actual_transit_hours']} hrs)."
                 )
+
+
+def render_vessel_svg_card(vessel_class: str):
+    """
+    Renders a compact, dark-themed technical SVG hull profile card tailored
+    to the currently selected vessel class.
+    """
+    if vessel_class == "Standard Cargo":
+        badge_bg = "rgba(255, 23, 68, 0.16)"
+        badge_border = "#FF1744"
+        badge_color = "#FF8A80"
+        badge_text = "Zero MYI tolerance — open water leads only"
+        svg_markup = """
+        <svg viewBox="0 0 320 85" style="width: 100%; height: 85px; display: block;" xmlns="http://www.w3.org/2000/svg">
+          <rect width="320" height="85" rx="6" fill="#0B121E" stroke="#1E2D42" stroke-width="1"/>
+          <!-- Waterline -->
+          <line x1="8" y1="54" x2="312" y2="54" stroke="#1565C0" stroke-width="1" stroke-dasharray="4,3"/>
+          <!-- Aft bridge & superstructure -->
+          <rect x="28" y="22" width="22" height="20" rx="1" fill="#293B52" stroke="#5C7696" stroke-width="1"/>
+          <rect x="33" y="16" width="14" height="6" fill="#3E5674"/>
+          <!-- Container stacks -->
+          <rect x="60" y="28" width="34" height="14" fill="#1E3A5F" stroke="#3B6998" stroke-width="0.8"/>
+          <rect x="98" y="26" width="34" height="16" fill="#23456E" stroke="#3B6998" stroke-width="0.8"/>
+          <rect x="136" y="28" width="34" height="14" fill="#1E3A5F" stroke="#3B6998" stroke-width="0.8"/>
+          <rect x="174" y="30" width="32" height="12" fill="#23456E" stroke="#3B6998" stroke-width="0.8"/>
+          <!-- Hull with prominent bulbous bow (right) -->
+          <path d="M 20 42 L 245 42 L 252 52 C 264 52, 267 60, 256 64 L 236 64 L 26 64 L 20 52 Z"
+                fill="#1B2838" stroke="#90A4AE" stroke-width="1.3"/>
+          <!-- Highlighted thin mild steel bow section -->
+          <path d="M 244 42 L 252 52 C 264 52, 267 60, 256 64 L 238 64"
+                fill="none" stroke="#FF5252" stroke-width="2.2"/>
+          <!-- Callout line & label -->
+          <line x1="255" y1="48" x2="268" y2="26" stroke="#FF8A80" stroke-width="1"/>
+          <circle cx="255" cy="48" r="2.2" fill="#FF5252"/>
+          <text x="182" y="16" fill="#FF8A80" font-family="monospace" font-size="9.5" font-weight="bold">12–15 mm mild steel hull</text>
+          <text x="14" y="77" fill="#7F94B0" font-family="sans-serif" font-size="9">PROFILE: Bulbous-Bow Container / Bulk Carrier</text>
+        </svg>
+        """
+    elif vessel_class == "Polar Class 6":
+        badge_bg = "rgba(255, 193, 7, 0.16)"
+        badge_border = "#FFC107"
+        badge_color = "#FFE082"
+        badge_text = "Summer/autumn medium first-year ice up to 1.0 m"
+        svg_markup = """
+        <svg viewBox="0 0 320 85" style="width: 100%; height: 85px; display: block;" xmlns="http://www.w3.org/2000/svg">
+          <rect width="320" height="85" rx="6" fill="#0B121E" stroke="#1E2D42" stroke-width="1"/>
+          <!-- Waterline & thin FYI floes -->
+          <line x1="8" y1="54" x2="312" y2="54" stroke="#00BCD4" stroke-width="1" stroke-dasharray="5,3"/>
+          <rect x="255" y="51" width="22" height="4" rx="1" fill="#00E5FF" opacity="0.65"/>
+          <rect x="282" y="51" width="18" height="4" rx="1" fill="#00E5FF" opacity="0.5"/>
+          <!-- Superstructure & crane -->
+          <rect x="44" y="20" width="38" height="22" rx="1.5" fill="#293B52" stroke="#6482A6" stroke-width="1"/>
+          <rect x="52" y="13" width="18" height="7" fill="#3E5674"/>
+          <path d="M 135 42 L 135 24 L 165 30" fill="none" stroke="#6482A6" stroke-width="1.5"/>
+          <!-- Raked ice-strengthened hull -->
+          <path d="M 22 42 L 260 40 L 244 55 L 228 64 L 28 64 L 22 53 Z"
+                fill="#1D2E42" stroke="#90A4AE" stroke-width="1.2"/>
+          <!-- Highlighted cyan ice-belt plating along waterline & raked stem -->
+          <path d="M 30 50 L 249 50 L 260 40 L 244 55 L 228 64 L 185 60 L 30 58 Z"
+                fill="rgba(0, 229, 255, 0.25)" stroke="#00E5FF" stroke-width="2.2"/>
+          <!-- Callout line & label -->
+          <line x1="251" y1="47" x2="264" y2="25" stroke="#00E5FF" stroke-width="1"/>
+          <circle cx="251" cy="47" r="2.2" fill="#00E5FF"/>
+          <text x="170" y="17" fill="#00E5FF" font-family="monospace" font-size="9.5" font-weight="bold">25–32 mm ice-belt hull</text>
+          <text x="14" y="77" fill="#7F94B0" font-family="sans-serif" font-size="9">PROFILE: PC6 / 1A Super Raked Ice-Strengthened Bow</text>
+        </svg>
+        """
+    else:
+        badge_bg = "rgba(0, 230, 118, 0.16)"
+        badge_border = "#00E676"
+        badge_color = "#69F0AE"
+        badge_text = "Continuous multi-year ice & pressure ridge penetration"
+        svg_markup = """
+        <svg viewBox="0 0 320 85" style="width: 100%; height: 85px; display: block;" xmlns="http://www.w3.org/2000/svg">
+          <rect width="320" height="85" rx="6" fill="#0B121E" stroke="#1E2D42" stroke-width="1"/>
+          <!-- Waterline & ridged MYI pack -->
+          <line x1="8" y1="54" x2="312" y2="54" stroke="#00E5FF" stroke-width="1" stroke-dasharray="3,2"/>
+          <polygon points="248,54 262,46 276,54 268,61 252,59" fill="#FF1744" opacity="0.45"/>
+          <polygon points="278,54 292,48 306,54 298,60 282,58" fill="#00E5FF" opacity="0.55"/>
+          <!-- Heavy Icebreaker mid-forward superstructure & aft helideck -->
+          <rect x="26" y="34" width="35" height="6" fill="#37474F" stroke="#78909C" stroke-width="0.9"/>
+          <rect x="75" y="18" width="68" height="22" rx="2" fill="#32465E" stroke="#7FA1C3" stroke-width="1"/>
+          <rect x="92" y="11" width="28" height="7" fill="#496584"/>
+          <!-- Spoon-shaped icebreaking bow & deep hull -->
+          <path d="M 22 40 L 264 36 C 258 48, 244 58, 222 65 L 32 65 L 22 52 Z"
+                fill="#221E2A" stroke="#B0BEC5" stroke-width="1.2"/>
+          <!-- Highlighted crimson reinforced keel & spoon bow plating -->
+          <path d="M 32 65 L 222 65 C 244 58, 258 48, 264 36 L 250 37 C 244 48, 232 56, 214 61 L 32 61 Z"
+                fill="rgba(255, 23, 68, 0.38)" stroke="#FF1744" stroke-width="2.4"/>
+          <!-- Callout line & label -->
+          <line x1="252" y1="48" x2="264" y2="25" stroke="#FF5252" stroke-width="1"/>
+          <circle cx="252" cy="48" r="2.4" fill="#FF1744"/>
+          <text x="155" y="17" fill="#FF8A80" font-family="monospace" font-size="9.5" font-weight="bold">45–55 mm keel &amp; bow</text>
+          <text x="14" y="77" fill="#7F94B0" font-family="sans-serif" font-size="9">PROFILE: Polar Class 2/3 Spoon-Bow Heavy Icebreaker</text>
+        </svg>
+        """
+
+    html = f"""
+    <div style="margin: 4px 0 8px 0;">
+        {svg_markup}
+        <div style="
+            margin-top: 5px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: {badge_bg};
+            border: 1px solid {badge_border};
+            color: {badge_color};
+            font-size: 0.76rem;
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 0.01em;
+        ">
+            {badge_text}
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
