@@ -98,6 +98,7 @@ def sample_route_hazard(
     route_geom: Union[LineString, Dict, Any],
     hazard_source: Union[str, np.ndarray],
     transform: Optional[rasterio.Affine] = None,
+    crs: Optional[Any] = None,
     num_samples: int = 350
 ) -> Dict[str, Any]:
     """
@@ -107,6 +108,7 @@ def sample_route_hazard(
         route_geom: Shapely LineString, GeoJSON dict, or geometry object.
         hazard_source: Filepath string to *_hazard.tif OR a 2D numpy array of hazard classes (1, 2, 3).
         transform: Affine transform (required if hazard_source is a numpy array).
+        crs: Coordinate reference system (e.g. EPSG:4326 or EPSG:3413).
         num_samples: Number of equidistant sampling locations along the line.
         
     Returns:
@@ -120,7 +122,7 @@ def sample_route_hazard(
     else:
         raise ValueError("route_geom must be a Shapely geometry or GeoJSON dictionary")
 
-    # Interpolate equidistant points along corridor
+    # Interpolate equidistant points along corridor (in EPSG:4326)
     t_vals = np.linspace(0.0, 1.0, num_samples)
     pts = [line.interpolate(t, normalized=True) for t in t_vals]
     xs = np.array([p.x for p in pts], dtype=np.float64)
@@ -130,33 +132,62 @@ def sample_route_hazard(
     if isinstance(hazard_source, str):
         # Read from GeoTIFF file on disk
         with rasterio.open(hazard_source) as src:
-            sample_coords = [(x, y) for x, y in zip(xs, ys)]
+            target_crs = src.crs
+            if target_crs and str(target_crs).upper() not in ["EPSG:4326", "WGS84"]:
+                transformer = pyproj.Transformer.from_crs("EPSG:4326", target_crs, always_xy=True)
+                pxs, pys = transformer.transform(xs, ys)
+                sample_coords = [(x, y) for x, y in zip(pxs, pys)]
+            else:
+                sample_coords = [(x, y) for x, y in zip(xs, ys)]
             sampled_vals = [val[0] for val in src.sample(sample_coords)]
             sampled = np.array(sampled_vals, dtype=np.uint8)
     elif isinstance(hazard_source, np.ndarray):
         # Sample from in-memory numpy array using rasterio affine transform
         if transform is None:
             raise ValueError("Affine transform must be provided when hazard_source is a numpy array")
-        rows, cols = rowcol(transform, xs, ys)
-        rows = np.clip(rows, 0, hazard_source.shape[0] - 1)
-        cols = np.clip(cols, 0, hazard_source.shape[1] - 1)
-        sampled = hazard_source[rows, cols].astype(np.uint8)
+        
+        target_crs = crs
+        if target_crs and str(target_crs).upper() not in ["EPSG:4326", "WGS84", "NONE"]:
+            transformer = pyproj.Transformer.from_crs("EPSG:4326", target_crs, always_xy=True)
+            pxs, pys = transformer.transform(xs, ys)
+        else:
+            pxs, pys = xs, ys
+
+        rows, cols = rowcol(transform, pxs, pys)
+        rows = np.array(rows)
+        cols = np.array(cols)
+
+        H, W = hazard_source.shape
+        in_bounds = (rows >= 0) & (rows < H) & (cols >= 0) & (cols < W)
+        sampled = np.zeros(len(xs), dtype=np.uint8)
+        sampled[in_bounds] = hazard_source[rows[in_bounds], cols[in_bounds]]
     else:
         raise TypeError("hazard_source must be a file path string or 2D numpy array")
 
-    total_valid = len(sampled)
+    # Filter for valid sea surface classes (1: Open Water, 2: FYI, 3: MYI)
+    # Ignore 0 (off-swath nodata or masked land)
+    valid_mask = (sampled >= 1) & (sampled <= 3)
+    valid_sampled = sampled[valid_mask]
+    total_valid = len(valid_sampled)
+
     if total_valid == 0:
         return {
             "open_water_pct": 100.0,
             "fyi_pct": 0.0,
             "myi_pct": 0.0,
+            "open_water_count": 0,
+            "fyi_count": 0,
+            "myi_count": 0,
+            "total_samples": len(sampled),
+            "valid_samples": 0,
             "mean_hazard_tier": 1.0,
-            "total_samples": 0
+            "sampled_hazard": sampled,
+            "sample_points": list(zip(xs, ys))
         }
 
-    c1 = int(np.sum(sampled == 1))
-    c2 = int(np.sum(sampled == 2))
-    c3 = int(np.sum(sampled == 3))
+    c1 = int(np.sum(valid_sampled == 1))
+    c2 = int(np.sum(valid_sampled == 2))
+    c3 = int(np.sum(valid_sampled == 3))
 
     p1 = float((c1 / total_valid) * 100.0)
     p2 = float((c2 / total_valid) * 100.0)
@@ -169,8 +200,9 @@ def sample_route_hazard(
         "open_water_count": c1,
         "fyi_count": c2,
         "myi_count": c3,
-        "total_samples": total_valid,
-        "mean_hazard_tier": round(float(np.mean(sampled)), 2),
+        "total_samples": len(sampled),
+        "valid_samples": total_valid,
+        "mean_hazard_tier": round(float(np.mean(valid_sampled)), 2),
         "sampled_hazard": sampled,
         "sample_points": list(zip(xs, ys))
     }
@@ -284,6 +316,7 @@ def evaluate_corridor(
     route_geom: Union[LineString, Dict, Any],
     hazard_source: Union[str, np.ndarray],
     transform: Optional[rasterio.Affine] = None,
+    crs: Optional[Any] = None,
     vessel_class: Optional[str] = "Polar Class 6",
     nominal_length_nm: Optional[float] = None
 ) -> Dict[str, Any]:
@@ -304,7 +337,7 @@ def evaluate_corridor(
         dist_nm = calculate_line_length_nm(line)
 
     # Sample ice hazard breakdown
-    breakdown = sample_route_hazard(line, hazard_source, transform=transform)
+    breakdown = sample_route_hazard(line, hazard_source, transform=transform, crs=crs)
 
     p1 = breakdown["open_water_pct"]
     p2 = breakdown["fyi_pct"]

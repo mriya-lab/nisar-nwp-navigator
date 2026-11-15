@@ -182,8 +182,9 @@ for feat in routes_geojson.get("features", []):
     nominal_dist = feat["properties"].get("nominal_length_nm")
     eval_res = evaluate_corridor(
         route_geom=feat["geometry"],
-        hazard_source=active_scene["hazard"],
+        hazard_source=active_scene.get("hazard_source", active_scene["hazard"]),
         transform=active_scene["transform"],
+        crs=active_scene.get("crs"),
         vessel_class=selected_vessel,
         nominal_length_nm=nominal_dist
     )
@@ -287,21 +288,26 @@ with tab_swipe:
     col_s1, col_s2, col_s3 = st.columns([1.5, 1.5, 1.0])
     
     # Available stages
-    stage_keys = list(STAGE_METADATA.keys())
+    if manifest_status["is_fallback"]:
+        stage_keys = list(STAGE_METADATA.keys())
+        stage_format = lambda k: STAGE_METADATA[k]["name"]
+    else:
+        stage_keys = list(manifest_status["scenes"].keys())
+        stage_format = lambda k: manifest_status["scenes"][k].get("stage_label", k)
     
     with col_s1:
         left_stage_id = st.selectbox(
             "Left Panel (Reference Baseline)",
             stage_keys,
-            index=0,  # August Open Water
-            format_func=lambda k: STAGE_METADATA[k]["name"]
+            index=0,
+            format_func=stage_format
         )
     with col_s2:
         right_stage_id = st.selectbox(
             "Right Panel (Target Evaluation)",
             stage_keys,
-            index=1,  # September MYI Intrusion
-            format_func=lambda k: STAGE_METADATA[k]["name"]
+            index=1 if len(stage_keys) > 1 else 0,
+            format_func=stage_format
         )
     with col_s3:
         swipe_mode = st.selectbox(
@@ -310,17 +316,25 @@ with tab_swipe:
         )
 
     # Load both datasets
-    left_ds = load_scene_dataset(left_stage_id)
-    right_ds = load_scene_dataset(right_stage_id)
+    left_ds = load_scene_dataset(left_stage_id, manifest_status)
+    right_ds = load_scene_dataset(right_stage_id, manifest_status)
 
     # Evaluate along active route
     left_eval = evaluate_corridor(
-        active_feature["geometry"], left_ds["hazard"], left_ds["transform"],
-        vessel_class=selected_vessel, nominal_length_nm=active_feature["properties"].get("nominal_length_nm")
+        active_feature["geometry"],
+        left_ds.get("hazard_source", left_ds["hazard"]),
+        transform=left_ds["transform"],
+        crs=left_ds.get("crs"),
+        vessel_class=selected_vessel,
+        nominal_length_nm=active_feature["properties"].get("nominal_length_nm")
     )
     right_eval = evaluate_corridor(
-        active_feature["geometry"], right_ds["hazard"], right_ds["transform"],
-        vessel_class=selected_vessel, nominal_length_nm=active_feature["properties"].get("nominal_length_nm")
+        active_feature["geometry"],
+        right_ds.get("hazard_source", right_ds["hazard"]),
+        transform=right_ds["transform"],
+        crs=right_ds.get("crs"),
+        vessel_class=selected_vessel,
+        nominal_length_nm=active_feature["properties"].get("nominal_length_nm")
     )
 
     # Render Differential KPI metrics
