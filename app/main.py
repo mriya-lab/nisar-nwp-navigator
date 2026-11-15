@@ -45,6 +45,7 @@ from app.components.sar_physics import (
     render_regime_photo_and_svg,
     render_polarimetric_classification_chart,
 )
+from app.components.architecture_tab import render_system_architecture_tab
 
 # Page configuration
 st.set_page_config(
@@ -274,12 +275,13 @@ st.caption("2026 NASA Space Apps Challenge ('Dancing with the SARs') — Real-ti
 # Top Level Status Alert
 render_route_status_banner(active_telemetry, selected_route_name)
 
-# Three Primary Tabs (state-tracked so inactive tabs skip heavy map rendering)
-tab_tactical, tab_swipe, tab_physics = st.tabs(
+# Four Primary Tabs (state-tracked so inactive tabs skip heavy map rendering)
+tab_tactical, tab_swipe, tab_physics, tab_arch = st.tabs(
     [
         "📍 Tactical Route Map",
         "🔄 Before / After Swipe Comparison",
         "🛰️ SAR Physics & Briefing",
+        "🏗️ System Architecture & Data Pipeline",
     ],
     on_change="rerun",
     key="main_navigation_tabs",
@@ -613,6 +615,14 @@ if tab_physics.open:
         st.markdown("---")
 
         _render_polarimetric_simulator()
+
+
+# ==========================================
+# TAB 4: SYSTEM ARCHITECTURE & DATA PIPELINE
+# ==========================================
+if tab_arch.open:
+    with tab_arch:
+        render_system_architecture_tab(manifest_status)
 
 
 # ==========================================
