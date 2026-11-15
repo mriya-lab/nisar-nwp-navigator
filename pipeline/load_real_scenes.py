@@ -1,11 +1,13 @@
 """
 pipeline/load_real_scenes.py
 Multi-granule regional mosaicking & single-scene ingestion pipeline for NISAR L2 GCOV data.
-Queries ASF Vertex over the wider Parry Channel / Barrow Strait bounding box for two
-10-day operational windows (Summer Baseline: 2026-08-14..2026-08-25, Autumn Freeze-Up:
-2026-10-19..2026-10-30), processes each granule with land masking and calibrated dB thresholds,
-reprojects RGB and Hazard rasters to EPSG:4326, stitches regional composite GeoTIFFs using
-rasterio.merge.merge, and updates data/processed/manifest.json.
+Queries ASF Vertex over the three classic Northwest Passage chokepoints:
+  1. Barrow Strait (Central Chokepoint — Summer Baseline & Autumn Freeze-Up)
+  2. M'Clure Strait (Western Chokepoint — Late-October Freeze-Up)
+  3. Victoria Strait (Southern Chokepoint — Late-October Freeze-Up)
+Processes each granule with STEP=6 decimation, land masking, and calibrated dB thresholds,
+reprojects RGB and Hazard rasters to EPSG:4326, stitches regional composite GeoTIFFs (< 1.5 MB each)
+using rasterio.merge.merge, and updates data/processed/manifest.json.
 """
 
 import os
@@ -30,17 +32,23 @@ from pipeline.fetch_and_process import (
     append_to_manifest,
 )
 
-# Wider Parry Channel / Barrow Strait operational AOI
-AOI_WKT = "POLYGON((-100.5 73.5, -88.5 73.5, -88.5 75.6, -100.5 75.6, -100.5 73.5))"
-MOSAIC_BOUNDS_WGS84 = (-100.5, 73.5, -88.5, 75.6)
+# Decimation step to guarantee lightweight COGs (< 1.5 MB per GeoTIFF)
+STEP = 6
 
-# Multi-granule 10-day operational mosaic windows covering East, Central, and West Barrow Strait
+# Default wider Parry Channel / Barrow Strait operational AOI
+BARROW_AOI_WKT = "POLYGON((-100.5 73.5, -88.5 73.5, -88.5 75.6, -100.5 75.6, -100.5 73.5))"
+MCLURE_AOI_WKT = "POLYGON((-121.5 74.1, -114.5 74.1, -114.5 75.3, -121.5 75.3, -121.5 74.1))"
+VICTORIA_AOI_WKT = "POLYGON((-102.5 68.8, -97.5 68.8, -97.5 70.3, -102.5 70.3, -102.5 68.8))"
+
+# Multi-granule regional mosaics across the three Northwest Passage chokepoints
 MOSAIC_WINDOWS: List[Dict[str, Any]] = [
     {
         "mosaic_id": "NISAR_L2_GCOV_20260824_BARROW_MOSAIC",
         "stage_label": "2026-08-24 — Barrow Strait Regional Mosaic",
         "timestamp": "2026-08-24T08:45:50Z",
         "polarization": "Multi-Swath Dual/Single-Pol (DHDH + VVVV)",
+        "aoi_wkt": BARROW_AOI_WKT,
+        "bounds_wgs84": (-100.5, 73.5, -88.5, 75.6),
         "start": "2026-08-10T00:00:00Z",
         "end": "2026-08-28T23:59:59Z",
         "hazard_merge_method": "first",
@@ -62,6 +70,8 @@ MOSAIC_WINDOWS: List[Dict[str, Any]] = [
         "stage_label": "2026-10-29 — Barrow Strait Regional Mosaic",
         "timestamp": "2026-10-29T04:41:06Z",
         "polarization": "Multi-Swath Dual/Single-Pol (DHDH + VVVV)",
+        "aoi_wkt": BARROW_AOI_WKT,
+        "bounds_wgs84": (-100.5, 73.5, -88.5, 75.6),
         "start": "2026-10-19T00:00:00Z",
         "end": "2026-10-30T23:59:59Z",
         "hazard_merge_method": "max",
@@ -74,6 +84,44 @@ MOSAIC_WINDOWS: List[Dict[str, Any]] = [
             "NISAR_L2_PR_GCOV_034_002_A_041_4005_DHDH_A_20261024T080448_20261024T080518_P05036_N_F_J_001.h5",
             # Central-West Barrow Strait (Single-Pol NASV)
             "NISAR_L2_PR_GCOV_033_132_A_041_0005_NASV_A_20261021T082946_20261021T083016_P05023_N_F_J_001.h5",
+        ],
+    },
+    {
+        "mosaic_id": "NISAR_L2_GCOV_20261029_MCLURE_MOSAIC",
+        "stage_label": "2026-10-29 — M'Clure Strait Chokepoint Mosaic",
+        "timestamp": "2026-10-29T10:09:39Z",
+        "polarization": "Multi-Swath Single-Pol (VVVV)",
+        "aoi_wkt": MCLURE_AOI_WKT,
+        "bounds_wgs84": (-121.5, 74.1, -114.5, 75.3),
+        "start": "2026-10-15T00:00:00Z",
+        "end": "2026-11-05T23:59:59Z",
+        "hazard_merge_method": "max",
+        "granule_filenames": [
+            # West & Central M'Clure Strait (Single-Pol NASV)
+            "NISAR_L2_PR_GCOV_034_133_A_041_0005_NASV_A_20261102T100939_20261102T101009_P05036_N_F_J_001.h5",
+            # East M'Clure Strait (Single-Pol NASV)
+            "NISAR_L2_PR_GCOV_034_118_A_042_0005_NASV_A_20261101T091152_20261101T091225_P05036_N_F_J_001.h5",
+            # South-East M'Clure Strait / Banks Island Coast (Single-Pol NASV)
+            "NISAR_L2_PR_GCOV_034_133_A_040_0005_NASV_A_20261102T100905_20261102T100940_P05036_N_F_J_001.h5",
+        ],
+    },
+    {
+        "mosaic_id": "NISAR_L2_GCOV_20261029_VICTORIA_MOSAIC",
+        "stage_label": "2026-10-29 — Victoria Strait Chokepoint Mosaic",
+        "timestamp": "2026-10-29T09:51:14Z",
+        "polarization": "Multi-Swath Single-Pol (VVVV)",
+        "aoi_wkt": VICTORIA_AOI_WKT,
+        "bounds_wgs84": (-102.5, 68.8, -97.5, 70.3),
+        "start": "2026-10-15T00:00:00Z",
+        "end": "2026-11-05T23:59:59Z",
+        "hazard_merge_method": "max",
+        "granule_filenames": [
+            # Central & Southern Victoria Strait (Single-Pol NASV)
+            "NISAR_L2_PR_GCOV_034_133_A_037_0005_NASV_A_20261102T100718_20261102T100755_P05036_N_F_J_001.h5",
+            # Northern Victoria Strait & Larsen Sound Entrance (Single-Pol NASV)
+            "NISAR_L2_PR_GCOV_033_104_A_038_0005_NASV_A_20261019T095114_20261019T095151_P05023_N_F_J_001.h5",
+            # Eastern Victoria Strait & King William Island Channel (Single-Pol NASV)
+            "NISAR_L2_PR_GCOV_033_172_D_053_0005_NASV_A_20261024T031147_20261024T031224_P05036_N_F_J_001.h5",
         ],
     },
 ]
@@ -89,11 +137,12 @@ def total_bytes(obj) -> int:
 
 def ensure_window_granules(window_cfg: Dict[str, Any]) -> List[str]:
     """
-    Queries ASF Vertex for the given 10-day operational window over AOI_WKT if any
+    Queries ASF Vertex for the given operational window over window_cfg['aoi_wkt'] if any
     target granule is not yet cached locally in data/raw/.
     """
     os.makedirs(RAW_DIR, exist_ok=True)
     filenames = window_cfg["granule_filenames"]
+    aoi_wkt = window_cfg.get("aoi_wkt", BARROW_AOI_WKT)
     missing = [fn for fn in filenames if not os.path.exists(os.path.join(RAW_DIR, fn))]
 
     if missing:
@@ -101,12 +150,12 @@ def ensure_window_granules(window_cfg: Dict[str, Any]) -> List[str]:
 
         print(
             f"[ASF VERTEX] Querying dataset='NISAR', processingLevel='GCOV' "
-            f"for window {window_cfg['start']} .. {window_cfg['end']}..."
+            f"for {window_cfg['stage_label']} ({window_cfg['start']} .. {window_cfg['end']})..."
         )
         results = asf.search(
             dataset="NISAR",
             processingLevel="GCOV",
-            intersectsWith=AOI_WKT,
+            intersectsWith=aoi_wkt,
             start=window_cfg["start"],
             end=window_cfg["end"],
         )
@@ -171,9 +220,10 @@ def build_regional_mosaic(
 ) -> Dict[str, Any]:
     """
     Reprojects each granule's RGB and Hazard COGs to EPSG:4326 and stitches them into
-    a single regional composite GeoTIFF covering MOSAIC_BOUNDS_WGS84.
+    a single regional composite GeoTIFF covering window_cfg['bounds_wgs84'].
     """
     mosaic_id = window_cfg["mosaic_id"]
+    bounds_wgs84 = tuple(window_cfg["bounds_wgs84"])
     out_rgb_path = os.path.join(PROCESSED_DIR, f"{mosaic_id}_rgb.tif")
     out_hazard_path = os.path.join(PROCESSED_DIR, f"{mosaic_id}_hazard.tif")
     hazard_method = window_cfg.get("hazard_merge_method", "first")
@@ -209,7 +259,7 @@ def build_regional_mosaic(
 
     merged_hazard, hazard_transform = merge(
         h_srcs,
-        bounds=MOSAIC_BOUNDS_WGS84,
+        bounds=bounds_wgs84,
         res=(0.012, 0.005),
         nodata=0,
         method=hazard_method,
@@ -228,7 +278,7 @@ def build_regional_mosaic(
 
     merged_rgb, rgb_transform = merge(
         r_srcs,
-        bounds=MOSAIC_BOUNDS_WGS84,
+        bounds=bounds_wgs84,
         res=(0.012, 0.005),
         nodata=0,
         method="first",
@@ -238,7 +288,7 @@ def build_regional_mosaic(
     for mf in r_mems:
         mf.close()
 
-    # Fill any narrow inter-swath ocean seams within MOSAIC_BOUNDS_WGS84 using iterative neighbor propagation
+    # Fill any narrow inter-swath ocean seams within bounds_wgs84 using iterative neighbor propagation
     # while keeping all land masses strictly masked to 0 (transparent)
     _, h_rows, w_cols = merged_hazard.shape
     cols_idx = np.arange(w_cols)
@@ -278,7 +328,6 @@ def build_regional_mosaic(
     if merged_rgb.shape[1:] == valid_ocean_2d.shape:
         for b in range(merged_rgb.shape[0]):
             merged_rgb[b][~valid_ocean_2d] = 0
-            # Ensure valid ocean pixels have non-zero RGB so alpha masking stays 100% aligned
             zero_ocean = valid_ocean_2d & (
                 (merged_rgb[0] == 0) & (merged_rgb[1] == 0) & (merged_rgb[2] == 0)
             )
@@ -322,14 +371,19 @@ def build_regional_mosaic(
         dst.write(merged_hazard[0].astype(np.uint8), 1)
         dst.set_band_description(1, "Ice Hazard Tier (1: Water, 2: FYI, 3: MYI)")
 
-    print(f"[MOSAIC] Exported composite COGs: {out_rgb_path} and {out_hazard_path}")
+    rgb_kb = os.path.getsize(out_rgb_path) / 1024.0
+    haz_kb = os.path.getsize(out_hazard_path) / 1024.0
+    print(
+        f"[MOSAIC] Exported composite COGs: {out_rgb_path} ({rgb_kb:.1f} KB) "
+        f"and {out_hazard_path} ({haz_kb:.1f} KB)"
+    )
 
     return {
         "granule_id": mosaic_id,
         "timestamp": window_cfg["timestamp"],
         "polarization": window_cfg["polarization"],
         "stage_label": window_cfg["stage_label"],
-        "bbox_wgs84": list(MOSAIC_BOUNDS_WGS84),
+        "bbox_wgs84": list(bounds_wgs84),
         "rgb_path": out_rgb_path,
         "hazard_path": out_hazard_path,
     }
@@ -339,15 +393,15 @@ def main():
     os.makedirs(RAW_DIR, exist_ok=True)
     os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-    # 1. Ensure all granules needed for the two 10-day operational mosaics are present
+    # 1. Ensure all granules needed for the four regional chokepoint mosaics are present
     for win in MOSAIC_WINDOWS:
         ensure_window_granules(win)
 
-    # 2. Process all local HDF5 granules in data/raw/ to individual calibrated COGs
+    # 2. Process all local HDF5 granules in data/raw/ to individual calibrated COGs (STEP=6)
     raw_files = sorted(
         f for f in os.listdir(RAW_DIR) if f.endswith(".h5") or f.endswith(".hdf5")
     )
-    print(f"Processing {len(raw_files)} local NISAR HDF5 granule(s) in {RAW_DIR}...")
+    print(f"Processing {len(raw_files)} local NISAR HDF5 granule(s) in {RAW_DIR} with STEP={STEP}...")
 
     granule_cogs: Dict[str, Tuple[str, str, Dict[str, Any]]] = {}
     single_records: List[Dict[str, Any]] = []
@@ -355,7 +409,7 @@ def main():
     for fname in raw_files:
         gid = os.path.splitext(fname)[0]
         h5_path = os.path.join(RAW_DIR, fname)
-        rgb_path, hazard_path, meta = hdf5_to_cog(h5_path, gid)
+        rgb_path, hazard_path, meta = hdf5_to_cog(h5_path, gid, step=STEP)
         granule_cogs[gid] = (rgb_path, hazard_path, meta)
         single_records.append(
             {
@@ -369,14 +423,13 @@ def main():
             }
         )
 
-    # 3. Build the two stitched EPSG:4326 regional mosaics
+    # 3. Build the four stitched EPSG:4326 regional chokepoint mosaics
     mosaic_records: List[Dict[str, Any]] = []
     for win in MOSAIC_WINDOWS:
         mosaic_rec = build_regional_mosaic(win, granule_cogs)
         mosaic_records.append(mosaic_rec)
 
-    # 4. Write manifest.json with the two regional mosaics first (for immediate default comparison)
-    # followed by all single-track scenes
+    # 4. Write manifest.json with the four regional mosaics first followed by single-track scenes
     manifest_records = mosaic_records + single_records
     with open(MANIFEST_PATH, "w") as f:
         json.dump(manifest_records, f, indent=4)

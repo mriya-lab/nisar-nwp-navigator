@@ -57,7 +57,7 @@ def query_asf_vertex(wkt_geometry: str, start_date: str = "2026-08-01T00:00:00Z"
         return []
 
 
-def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[str, Any]]:
+def hdf5_to_cog(h5_filepath: str, output_prefix: str, step: int = 0) -> Tuple[str, str, Dict[str, Any]]:
     """
     Extracts backscatter matrix from NISAR HDF5 granule, converts power ratios 
     to decibels (dB), applies georeferenced coordinate bounds, and writes as Cloud-Optimized GeoTIFFs (COGs).
@@ -87,9 +87,10 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
         dx = float(grid["xCoordinateSpacing"][()])
         dy = float(grid["yCoordinateSpacing"][()])
         
-        # Adaptive decimation step to ensure lightweight COG output (~1000x1000 pixels)
+        # Adaptive decimation step to ensure lightweight COG output (< 1.5 MB)
         max_dim = max(len(ys), len(xs))
-        step = max(1, round(max_dim / 1000))
+        if step <= 0:
+            step = max(6, round(max_dim / 1000))
         
         # Extract backscatter fields (datasets are direct children of grid)
         has_xpol = False

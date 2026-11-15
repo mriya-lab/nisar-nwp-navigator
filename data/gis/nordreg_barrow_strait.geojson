@@ -11,23 +11,31 @@
             "type": "Feature",
             "properties": {
                 "route_id": "primary_deep_water",
-                "name": "Primary NORDREG Deep-Water Route (Resolute Bay Corridor)",
-                "category": "Primary Shipping Corridor",
-                "description": "Deep-water mid-channel passage transiting Barrow Strait past Resolute Bay (74.7\u00b0 N, 95.0\u00b0 W). Fastest passage during open-water periods.",
-                "nominal_length_nm": 141.2,
+                "name": "Primary NORDREG Deep-Water Route (Full Passage)",
+                "category": "Primary Deep-Water Mainline",
+                "description": "End-to-end deep-water Northwest Passage transit (~1,385 NM) from Baffin Bay through Lancaster Sound, Barrow Strait, Viscount Melville Sound, and M'Clure Strait into the Beaufort Sea.",
+                "nominal_length_nm": 1385.0,
                 "nominal_speed_knots": 14.0,
-                "key_hazard_area": "Vulnerable to multi-year ice intrusion funneled southward from Wellington Channel and McDougall Sound.",
+                "key_hazard_area": "Exposed to multi-year polar pack ice funneled into Barrow Strait and heavy Beaufort Gyre pressure ridges in M'Clure Strait.",
                 "color_hex": "#00E5FF"
             },
             "geometry": {
                 "type": "LineString",
                 "coordinates": [
-                    [-97.8, 74.25],
-                    [-96.2, 74.32],
-                    [-94.8, 74.38],
-                    [-93.2, 74.40],
-                    [-91.2, 74.38],
-                    [-89.0, 74.35]
+                    [-76.00, 73.95],
+                    [-82.00, 74.18],
+                    [-88.80, 74.32],
+                    [-91.00, 74.38],
+                    [-94.80, 74.43],
+                    [-98.20, 74.36],
+                    [-103.50, 74.35],
+                    [-109.00, 74.36],
+                    [-113.00, 74.28],
+                    [-114.50, 74.45],
+                    [-117.50, 74.60],
+                    [-121.50, 74.80],
+                    [-126.50, 74.60],
+                    [-133.00, 72.50]
                 ]
             }
         },
@@ -35,23 +43,42 @@
             "type": "Feature",
             "properties": {
                 "route_id": "southern_somerset_bypass",
-                "name": "Alternate Southern Bypass Route (Somerset Island Coast)",
-                "category": "Tactical Ice Bypass",
-                "description": "Southern route hugging Somerset Island northern coast. Sheltered from northerly multi-year ice intrusions during late-season choke events.",
-                "nominal_length_nm": 145.8,
+                "name": "Southern Tactical Bypass (Peel & Victoria Straits)",
+                "category": "Southern Archipelago Bypass",
+                "description": "Classic southern Northwest Passage diversion (~1,469 NM) from Baffin Bay and Lancaster Sound southward through Peel Sound, Franklin Strait, Victoria Strait, Queen Maud Gulf, Coronation Gulf, and Amundsen Gulf to the Beaufort Sea.",
+                "nominal_length_nm": 1468.7,
                 "nominal_speed_knots": 14.0,
-                "key_hazard_area": "Shallower bathymetry closer to coast; potential localized coastal fast ice during late freeze-up.",
+                "key_hazard_area": "Narrow archipelago channels and early seasonal freeze-up in Peel Sound and Victoria Strait.",
                 "color_hex": "#FFB300"
             },
             "geometry": {
                 "type": "LineString",
                 "coordinates": [
-                    [-97.8, 74.12],
-                    [-96.0, 74.18],
-                    [-94.5, 74.22],
-                    [-92.8, 74.24],
-                    [-91.2, 74.26],
-                    [-89.0, 74.25]
+                    [-76.00, 73.95],
+                    [-82.00, 74.18],
+                    [-88.80, 74.32],
+                    [-94.80, 74.43],
+                    [-96.25, 73.60],
+                    [-96.15, 72.50],
+                    [-96.35, 71.70],
+                    [-97.00, 71.35],
+                    [-99.50, 70.20],
+                    [-100.80, 69.20],
+                    [-101.20, 68.38],
+                    [-103.80, 68.75],
+                    [-104.80, 68.82],
+                    [-105.80, 69.00],
+                    [-107.60, 68.88],
+                    [-109.20, 68.45],
+                    [-112.50, 68.32],
+                    [-113.35, 68.32],
+                    [-113.35, 68.55],
+                    [-113.85, 68.82],
+                    [-115.00, 69.10],
+                    [-116.50, 69.18],
+                    [-121.00, 70.40],
+                    [-126.00, 71.10],
+                    [-133.00, 72.50]
                 ]
             }
         }

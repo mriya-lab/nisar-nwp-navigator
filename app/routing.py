@@ -12,8 +12,9 @@ and fuel-burn penalties across three distinct vessel profiles:
 import numpy as np
 import rasterio
 from rasterio.transform import rowcol
-from shapely.geometry import shape, LineString, Point
-from shapely.ops import transform as shapely_transform
+from rasterio.warp import transform_bounds
+from shapely.geometry import shape, LineString, Point, box
+from shapely.ops import transform as shapely_transform, linemerge
 from typing import Dict, Any, Union, List, Optional
 import pyproj
 
@@ -123,11 +124,46 @@ def sample_route_hazard(
     else:
         raise ValueError("route_geom must be a Shapely geometry or GeoJSON dictionary")
 
+    # Determine raster WGS84 bounding box so end-to-end routes concentrate sampling
+    # across the covered chokepoint swath when intersecting a regional SAR mosaic
+    raster_box_wgs84 = None
+    if isinstance(hazard_source, str):
+        with rasterio.open(hazard_source) as src:
+            b = src.bounds
+            if src.crs and str(src.crs).upper() not in ["EPSG:4326", "WGS84"]:
+                w, s, e, n = transform_bounds(src.crs, "EPSG:4326", b.left, b.bottom, b.right, b.top)
+            else:
+                w, s, e, n = b.left, b.bottom, b.right, b.top
+            raster_box_wgs84 = box(w, s, e, n)
+    elif isinstance(hazard_source, np.ndarray) and transform is not None:
+        H, W = hazard_source.shape
+        left = transform.c
+        top = transform.f
+        right = left + (transform.a * W)
+        bottom = top + (transform.e * H)
+        w, s, e, n = min(left, right), min(bottom, top), max(left, right), max(bottom, top)
+        if crs and str(crs).upper() not in ["EPSG:4326", "WGS84", "NONE"]:
+            w, s, e, n = transform_bounds(crs, "EPSG:4326", w, s, e, n)
+        raster_box_wgs84 = box(w, s, e, n)
+
+    line_to_sample = line
+    if raster_box_wgs84 is not None and not raster_box_wgs84.contains(line) and line.intersects(raster_box_wgs84):
+        clipped = line.intersection(raster_box_wgs84.buffer(-1e-4))
+        if not clipped.is_empty:
+            if clipped.geom_type == "MultiLineString":
+                merged = linemerge(clipped)
+                if merged.geom_type == "LineString":
+                    line_to_sample = merged
+                else:
+                    line_to_sample = max(merged.geoms, key=lambda g: g.length)
+            elif clipped.geom_type == "LineString" and clipped.length > 0:
+                line_to_sample = clipped
+
     # Interpolate equidistant points in metric Polar Stereographic North (EPSG:3413)
     # so waypoints are evenly spaced in nautical miles regardless of high-latitude meridian convergence
     to_3413 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3413", always_xy=True)
     to_4326 = pyproj.Transformer.from_crs("EPSG:3413", "EPSG:4326", always_xy=True)
-    line_metric = shapely_transform(to_3413.transform, line)
+    line_metric = shapely_transform(to_3413.transform, line_to_sample)
 
     t_vals = np.linspace(0.0, 1.0, num_samples)
     pts_metric = [line_metric.interpolate(t, normalized=True) for t in t_vals]

@@ -18,23 +18,33 @@ def create_tactical_folium_map(
     active_route_id: str,
     evaluations: Dict[str, Any],
     radar_mode: str = "3-Tier Hazard Classification",
-    radar_opacity: float = 0.80
+    radar_opacity: float = 0.80,
+    fit_full_passage: bool = False
 ) -> folium.Map:
     """
-    Constructs an interactive Folium Map centered on Barrow Strait.
+    Constructs an interactive Folium Map centered on the active NISAR SAR mosaic bounding box
+    (or fitted to the full Baffin Bay–to–Beaufort Sea Northwest Passage when fit_full_passage=True).
     """
-    # Frame map on Barrow Strait shipping corridor and active NISAR swath
-    swath_center = scene_dataset.get("swath_center", [74.35, -93.40])
     bounds = scene_dataset["bounds"]
-    lon_span = abs(bounds[1][1] - bounds[0][1])
-    if lon_span > 10.0:
-        center_lat = (swath_center[0] * 0.35) + (74.35 * 0.65)
-        center_lon = (swath_center[1] * 0.35) + (-93.40 * 0.65)
-        zoom_start = 6
+    s_south, s_west = bounds[0]
+    s_north, s_east = bounds[1]
+    swath_center = scene_dataset.get(
+        "swath_center",
+        [(s_south + s_north) / 2.0, (s_west + s_east) / 2.0],
+    )
+    swath_lon_span = abs(s_east - s_west)
+
+    if fit_full_passage:
+        center_lat = 71.80
+        center_lon = -104.50
+        zoom_start = 4
     else:
-        center_lat = 74.35
-        center_lon = -93.40
-        zoom_start = 7
+        # Center on the active NISAR SAR mosaic bounding box so the radar overlay stays crisp
+        box_lat = (s_south + s_north) / 2.0
+        box_lon = (s_west + s_east) / 2.0
+        center_lat = (swath_center[0] * 0.35) + (box_lat * 0.65)
+        center_lon = (swath_center[1] * 0.35) + (box_lon * 0.65)
+        zoom_start = 7 if swath_lon_span < 6.5 else 6
 
     # Base map using satellite imagery
     m = folium.Map(
@@ -45,6 +55,9 @@ def create_tactical_folium_map(
         name="Satellite Basemap",
         control_scale=True
     )
+
+    if fit_full_passage:
+        m.fit_bounds([[68.0, -133.5], [75.5, -75.5]])
 
     if radar_mode == "Dual-Pol False-Color RGB (HH/HV)":
         folium.raster_layers.ImageOverlay(
@@ -93,6 +106,48 @@ def create_tactical_folium_map(
             "icon": "shield",
             "color": "orange",
             "desc": "Sheltered southern waterway along Somerset Island northern bluffs."
+        },
+        {
+            "name": "M'Clure Strait Western Gate (Beaufort Exit)",
+            "coords": [74.75, -121.00],
+            "icon": "compass",
+            "color": "green",
+            "desc": "Western deep-water chokepoint exiting M'Clure Strait toward the Beaufort Sea."
+        },
+        {
+            "name": "Mercy Bay / Banks Island Monitoring Point",
+            "coords": [74.15, -119.00],
+            "icon": "anchor",
+            "color": "blue",
+            "desc": "Historic HMS Investigator anchorage and northern Banks Island ice monitoring point."
+        },
+        {
+            "name": "Victoria Strait Northern Gate (Larsen Sound)",
+            "coords": [70.15, -100.70],
+            "icon": "compass",
+            "color": "purple",
+            "desc": "Northern entrance to Victoria Strait between Victoria Island and King William Island."
+        },
+        {
+            "name": "King William Island / Queen Maud Gulf Gate",
+            "coords": [69.00, -99.75],
+            "icon": "anchor",
+            "color": "orange",
+            "desc": "Southern Victoria Strait exit into Queen Maud Gulf along the Amundsen route."
+        },
+        {
+            "name": "Baffin Bay Eastern Gateway (Lancaster Entrance)",
+            "coords": [73.95, -76.00],
+            "icon": "ship",
+            "color": "darkblue",
+            "desc": "Eastern Atlantic/Baffin Bay entry into the Northwest Passage."
+        },
+        {
+            "name": "Beaufort Sea Western Gateway (Amundsen / M'Clure Exit)",
+            "coords": [72.50, -133.00],
+            "icon": "ship",
+            "color": "darkgreen",
+            "desc": "Western Beaufort Sea exit completing the Baffin Bay–to–Beaufort Sea transit."
         }
     ]
 
@@ -143,10 +198,15 @@ def create_tactical_folium_map(
             name=f"Corridor: {r_props['name']}"
         ).add_to(m)
 
-        # If this is the active route, place an animated vessel icon near midpoint
-        if is_active and len(coords_latlon) > 3:
-            mid_idx = len(coords_latlon) // 2
-            mid_pt = coords_latlon[mid_idx]
+        # If this is the active route, place a vessel icon near the sampled chokepoint midpoint
+        if is_active and len(coords_latlon) >= 2:
+            sampled_pts = eval_item.get("breakdown", {}).get("sample_points", [])
+            if sampled_pts and not fit_full_passage:
+                sp_mid = sampled_pts[len(sampled_pts) // 2]
+                mid_pt = [float(sp_mid[1]), float(sp_mid[0])]
+            else:
+                mid_idx = len(coords_latlon) // 2
+                mid_pt = coords_latlon[mid_idx]
             folium.Marker(
                 location=mid_pt,
                 tooltip=f"Vessel Position: {eval_item.get('telemetry', {}).get('vessel_class', 'Vessel')}",

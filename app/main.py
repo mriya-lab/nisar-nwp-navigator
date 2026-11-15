@@ -144,10 +144,53 @@ else:
         label = rec.get("stage_label", gid)
         scene_choices[label] = gid
 
+
+def _find_overlapping_mosaic_for_feature(feature: dict, scenes: dict) -> tuple[list[str], str | None]:
+    """Returns (all_overlapping_mosaic_labels, preferred_mosaic_label) for a route feature."""
+    from shapely.geometry import shape, box
+
+    geom = feature.get("geometry")
+    if not geom or not scenes:
+        return [], None
+    route_line = shape(geom)
+
+    overlapping_mosaics = []
+    for gid, rec in scenes.items():
+        label = rec.get("stage_label", gid)
+        is_mosaic = ("MOSAIC" in gid.upper()) or ("mosaic" in label.lower())
+        bbox = rec.get("bbox_wgs84")
+        if is_mosaic and bbox and len(bbox) == 4:
+            b_min_lon, b_min_lat, b_max_lon, b_max_lat = bbox
+            if route_line.intersects(box(b_min_lon, b_min_lat, b_max_lon, b_max_lat)):
+                overlapping_mosaics.append(label)
+
+    if not overlapping_mosaics:
+        return [], None
+    preferred = next((lbl for lbl in overlapping_mosaics if "2026-10-29" in lbl), overlapping_mosaics[0])
+    return overlapping_mosaics, preferred
+
+
+scene_label_list = list(scene_choices.keys())
+default_idx = 1 if len(scene_label_list) > 1 else 0
+
+if not manifest_status["is_fallback"] and scene_label_list:
+    overlapping_labels, preferred_mosaic_label = _find_overlapping_mosaic_for_feature(
+        active_feature, manifest_status["scenes"]
+    )
+    prev_route_id = st.session_state.get("_prev_active_route_id")
+    current_stage = st.session_state.get("radar_stage_selectbox")
+    if prev_route_id != active_route_id:
+        st.session_state["_prev_active_route_id"] = active_route_id
+        if preferred_mosaic_label and current_stage not in overlapping_labels:
+            st.session_state["radar_stage_selectbox"] = preferred_mosaic_label
+    if "radar_stage_selectbox" not in st.session_state or st.session_state["radar_stage_selectbox"] not in scene_label_list:
+        st.session_state["radar_stage_selectbox"] = preferred_mosaic_label or scene_label_list[default_idx]
+
 selected_scene_label = st.sidebar.selectbox(
     "Radar Acquisition Stage",
-    list(scene_choices.keys()),
-    index=1 if len(scene_choices) > 1 else 0  # Default to September Intrusion
+    scene_label_list,
+    index=default_idx,
+    key="radar_stage_selectbox"
 )
 active_scene_id = scene_choices[selected_scene_label]
 
@@ -164,6 +207,11 @@ radar_display_mode = st.sidebar.radio(
     index=0
 )
 radar_opacity = st.sidebar.slider("Radar Layer Opacity", min_value=0.2, max_value=1.0, value=0.80, step=0.05)
+fit_full_passage = st.sidebar.toggle(
+    "🌎 Fit Full Passage / Zoom to Active SAR Swath",
+    value=False,
+    help="When off (default), centers viewport on the active NISAR SAR mosaic bounding box (zoom 6–7). Toggle on to frame the entire ~1,450 NM Baffin Bay–to–Beaufort Sea corridor.",
+)
 
 
 # ==========================================
@@ -179,14 +227,27 @@ active_scene = _cached_load_scene_dataset(
 all_corridor_evaluations = []
 evaluations_dict = {}
 
+from shapely.geometry import shape as _shp_shape, box as _shp_box
+_s_bounds = active_scene["bounds"]
+_active_scene_box = _shp_box(_s_bounds[0][1], _s_bounds[0][0], _s_bounds[1][1], _s_bounds[1][0])
+
 for feat in routes_geojson.get("features", []):
     rid = feat["properties"].get("route_id", feat["properties"]["name"])
     nominal_dist = feat["properties"].get("nominal_length_nm")
+    scene_for_eval = active_scene
+    if not manifest_status["is_fallback"] and not _shp_shape(feat["geometry"]).intersects(_active_scene_box):
+        _, pref_lbl = _find_overlapping_mosaic_for_feature(feat, manifest_status["scenes"])
+        if pref_lbl and pref_lbl in scene_choices and scene_choices[pref_lbl] != active_scene_id:
+            scene_for_eval = _cached_load_scene_dataset(
+                scene_choices[pref_lbl],
+                manifest_status["is_fallback"],
+                manifest_mtime,
+            )
     eval_res = evaluate_corridor(
         route_geom=feat["geometry"],
-        hazard_source=active_scene.get("hazard_source", active_scene["hazard"]),
-        transform=active_scene["transform"],
-        crs=active_scene.get("crs"),
+        hazard_source=scene_for_eval.get("hazard_source", scene_for_eval["hazard"]),
+        transform=scene_for_eval["transform"],
+        crs=scene_for_eval.get("crs"),
         vessel_class=selected_vessel,
         nominal_length_nm=nominal_dist
     )
@@ -243,7 +304,8 @@ if tab_tactical.open:
                 active_route_id=active_route_id,
                 evaluations=evaluations_dict,
                 radar_mode=radar_display_mode,
-                radar_opacity=radar_opacity
+                radar_opacity=radar_opacity,
+                fit_full_passage=fit_full_passage
             )
 
             map_html = tactical_map.get_root().render()
