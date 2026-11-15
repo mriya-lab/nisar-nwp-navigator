@@ -154,7 +154,7 @@ def create_tactical_folium_map(
             ).add_to(m)
 
     # Controls
-    folium.LayerControl(position="topright", collapsed=False).add_to(m)
+    folium.LayerControl(position="topright", collapsed=True).add_to(m)
     plugins.Fullscreen(position="topleft").add_to(m)
     plugins.MiniMap(toggle_display=True, position="bottomleft").add_to(m)
 

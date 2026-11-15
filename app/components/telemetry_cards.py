@@ -5,6 +5,7 @@ Polar Code operational status badges, ice hazard concentration breakdowns,
 and comparative corridor optimization matrices.
 """
 
+import base64
 import streamlit as st
 from typing import Dict, Any, List
 
@@ -101,16 +102,12 @@ def render_ice_breakdown_bars(breakdown: Dict[str, Any]):
         p2 = breakdown["fyi_pct"]
         p3 = breakdown["myi_pct"]
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"🌊 **Open Water (Tier 1):** `{p1:.1f}%`")
-            st.progress(min(1.0, max(0.0, p1 / 100.0)))
-        with col2:
-            st.markdown(f"❄️ **First-Year Ice (Tier 2):** `{p2:.1f}%`")
-            st.progress(min(1.0, max(0.0, p2 / 100.0)))
-        with col3:
-            st.markdown(f"⚠️ **Multi-Year / Ridged (Tier 3):** `{p3:.1f}%`")
-            st.progress(min(1.0, max(0.0, p3 / 100.0)))
+        st.markdown(f"🌊 **Open Water (Tier 1):** `{p1:.1f}%`")
+        st.progress(min(1.0, max(0.0, p1 / 100.0)))
+        st.markdown(f"❄️ **First-Year Ice (Tier 2):** `{p2:.1f}%`")
+        st.progress(min(1.0, max(0.0, p2 / 100.0)))
+        st.markdown(f"⚠️ **Multi-Year / Ridged (Tier 3):** `{p3:.1f}%`")
+        st.progress(min(1.0, max(0.0, p3 / 100.0)))
 
 
 def render_corridor_comparison_table(evaluations: List[Dict[str, Any]], active_route_id: str):
@@ -264,24 +261,16 @@ def render_vessel_svg_card(vessel_class: str):
         </svg>
         """
 
-    html = f"""
-    <div style="margin: 4px 0 8px 0;">
-        {svg_markup}
-        <div style="
-            margin-top: 5px;
-            padding: 4px 8px;
-            border-radius: 4px;
-            background: {badge_bg};
-            border: 1px solid {badge_border};
-            color: {badge_color};
-            font-size: 0.76rem;
-            font-weight: 600;
-            text-align: center;
-            letter-spacing: 0.01em;
-        ">
-            {badge_text}
-        </div>
-    </div>
-    """
+    b64_svg = base64.b64encode(svg_markup.strip().encode("utf-8")).decode("ascii")
+    html = (
+        f'<div style="margin: 4px 0 10px 0;">'
+        f'<img src="data:image/svg+xml;base64,{b64_svg}" '
+        f'alt="{vessel_class} technical hull profile" '
+        f'style="width: 100%; height: 85px; display: block; border-radius: 6px;" />'
+        f'<div style="margin-top: 5px; padding: 4px 8px; border-radius: 4px; '
+        f'background: {badge_bg}; border: 1px solid {badge_border}; color: {badge_color}; '
+        f'font-size: 0.76rem; font-weight: 600; text-align: center; letter-spacing: 0.01em;">'
+        f'{badge_text}</div></div>'
+    )
     st.markdown(html, unsafe_allow_html=True)
 
