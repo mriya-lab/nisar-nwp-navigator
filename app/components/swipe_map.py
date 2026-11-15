@@ -77,6 +77,25 @@ def create_swipe_comparison_map(
             name=r_name
         ).add_to(m)
 
+    # Patch L.ImageOverlay.prototype.getContainer -> getElement so leaflet-side-by-side
+    # can clip ImageOverlay rasters cleanly alongside TileLayers
+    m.get_root().html.add_child(folium.Element("""
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        if (window.L && L.ImageOverlay && !L.ImageOverlay.prototype.getContainer) {
+            L.ImageOverlay.prototype.getContainer = function() {
+                return this.getElement();
+            };
+        }
+    });
+    if (window.L && L.ImageOverlay && !L.ImageOverlay.prototype.getContainer) {
+        L.ImageOverlay.prototype.getContainer = function() {
+            return this.getElement();
+        };
+    }
+    </script>
+    """))
+
     # Add SideBySide split controller
     sbs = plugins.SideBySideLayers(layer_left=layer_left, layer_right=layer_right)
     sbs.add_to(m)
