@@ -7,6 +7,7 @@ data/processed/*
 !data/processed/.gitkeep
 data/gis/*
 !data/gis/.gitkeep
+!data/gis/*.geojson
 
 # Standard Python ignores
 __pycache__/
