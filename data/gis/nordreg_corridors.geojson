@@ -4,8 +4,11 @@
         {
             "type": "Feature",
             "properties": {
+                "route_id": "nordreg_deep_water",
                 "name": "NORDREG Deep Water Route",
+                "category": "Primary Shipping Corridor",
                 "status": "Active",
+                "nominal_length_nm": 141.2,
                 "base_risk_multiplier": 1.0
             },
             "geometry": {
@@ -33,8 +36,11 @@
         {
             "type": "Feature",
             "properties": {
+                "route_id": "lancaster_sound_entrance",
                 "name": "Lancaster Sound Entrance",
+                "category": "Eastern Gateway",
                 "status": "Monitored",
+                "nominal_length_nm": 145.8,
                 "base_risk_multiplier": 1.4
             },
             "geometry": {

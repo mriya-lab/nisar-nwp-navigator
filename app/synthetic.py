@@ -310,36 +310,38 @@ def write_synthetic_stage_to_cogs(stage_id: str, output_dir: str = "data/process
 
     height, width = stage["hh_db"].shape
 
-    # 1. Dual-Pol Backscatter GeoTIFF (Band 1: HHHH dB, Band 2: HVHV dB)
+    # 1. Dual-Pol Backscatter Cloud-Optimized GeoTIFF (Band 1: HHHH dB, Band 2: HVHV dB)
     with rasterio.open(
         cog_path,
         "w",
-        driver="GTiff",
+        driver="COG",
         height=height,
         width=width,
         count=2,
         dtype=np.float32,
         crs="EPSG:4326",
         transform=TRANSFORM,
-        nodata=-9999.0
+        nodata=-9999.0,
+        compress="deflate"
     ) as dst:
         dst.write(stage["hh_db"].astype(np.float32), 1)
         dst.write(stage["hv_db"].astype(np.float32), 2)
         dst.set_band_description(1, "HHHH Backscatter (dB)")
         dst.set_band_description(2, "HVHV Backscatter (dB)")
 
-    # 2. Hazard Classification GeoTIFF (Band 1: uint8 1=Water, 2=FYI, 3=MYI)
+    # 2. Hazard Classification Cloud-Optimized GeoTIFF (Band 1: uint8 1=Water, 2=FYI, 3=MYI)
     with rasterio.open(
         hazard_path,
         "w",
-        driver="GTiff",
+        driver="COG",
         height=height,
         width=width,
         count=1,
         dtype=np.uint8,
         crs="EPSG:4326",
         transform=TRANSFORM,
-        nodata=0
+        nodata=0,
+        compress="deflate"
     ) as dst:
         dst.write(stage["hazard"].astype(np.uint8), 1)
         dst.set_band_description(1, "Ice Hazard Tier (1: Water, 2: FYI, 3: MYI)")

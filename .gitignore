@@ -16,5 +16,6 @@ __pycache__/
 *.pyc
 .env
 venv/
-.streamlit/
+.streamlit/secrets.toml
+.agents/
 data/raw/*.h5

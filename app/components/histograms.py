@@ -21,13 +21,20 @@ def render_backscatter_histograms(
     Renders interactive Plotly backscatter distribution histograms
     with physical threshold demarcations.
     """
-    # Subsample if large to keep browser interaction instant
+    # Filter out off-swath nodata (0) and invalid pixels before subsampling
+    if hazard is not None and hazard.shape == hh_db.shape:
+        valid = (hazard >= 1) & (hazard <= 3) & np.isfinite(hh_db) & np.isfinite(hv_db) & (hh_db > -900) & (hv_db > -900)
+    else:
+        valid = np.isfinite(hh_db) & np.isfinite(hv_db) & (hh_db > -900) & (hv_db > -900)
+
+    flat_hh = hh_db[valid].flatten()
+    flat_hv = hv_db[valid].flatten()
+
+    # Subsample deterministically if large to keep browser interaction instant
     sample_size = 8000
-    flat_hh = hh_db.flatten()
-    flat_hv = hv_db.flatten()
-    
     if len(flat_hh) > sample_size:
-        idx = np.random.choice(len(flat_hh), sample_size, replace=False)
+        rng = np.random.default_rng(42)
+        idx = rng.choice(len(flat_hh), sample_size, replace=False)
         sample_hh = flat_hh[idx]
         sample_hv = flat_hv[idx]
     else:
@@ -94,7 +101,11 @@ def render_backscatter_histograms(
         paper_bgcolor="rgba(15, 23, 42, 0.0)"
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(
+        fig,
+        width="stretch",
+        alt=f"Overlay histogram of HHHH and HVHV radar backscatter in dB for {stage_name}",
+    )
 
 
 def render_ice_donut_chart(open_water_pct: float, fyi_pct: float, myi_pct: float):
@@ -120,4 +131,8 @@ def render_ice_donut_chart(open_water_pct: float, fyi_pct: float, myi_pct: float
         paper_bgcolor="rgba(0,0,0,0)"
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(
+        fig,
+        width="stretch",
+        alt=f"Donut chart of corridor ice composition: {open_water_pct:.1f}% open water, {fyi_pct:.1f}% first-year ice, {myi_pct:.1f}% multi-year ice",
+    )

@@ -9,14 +9,15 @@ utilizing folium.plugins.SideBySideLayers.
 import folium
 from folium import plugins
 import streamlit as st
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 def create_swipe_comparison_map(
     left_dataset: Dict[str, Any],
     right_dataset: Dict[str, Any],
     layer_mode: str = "3-Tier Ice Hazard Classification",
-    opacity: float = 0.85
+    opacity: float = 0.85,
+    active_feature: Optional[Dict[str, Any]] = None
 ) -> folium.Map:
     """
     Constructs an interactive split-screen swipe map comparing two dates/stages.
@@ -32,7 +33,8 @@ def create_swipe_comparison_map(
         name="Satellite Basemap"
     )
 
-    bounds = left_dataset["bounds"]
+    left_bounds = left_dataset["bounds"]
+    right_bounds = right_dataset["bounds"]
 
     if layer_mode == "Dual-Pol False-Color RGB (HH/HV)":
         left_url = left_dataset["rgb_data_url"]
@@ -45,21 +47,35 @@ def create_swipe_comparison_map(
         left_title = f"{left_dataset['date_str']} (Left) Hazard"
         right_title = f"{right_dataset['date_str']} (Right) Hazard"
 
-    # Add left layer
+    # Add left layer with its own geographic bounds
     layer_left = folium.raster_layers.ImageOverlay(
         image=left_url,
-        bounds=bounds,
+        bounds=left_bounds,
         opacity=opacity,
         name=left_title
     ).add_to(m)
 
-    # Add right layer
+    # Add right layer with its own geographic bounds
     layer_right = folium.raster_layers.ImageOverlay(
         image=right_url,
-        bounds=bounds,
+        bounds=right_bounds,
         opacity=opacity,
         name=right_title
     ).add_to(m)
+
+    # Overlay active shipping corridor for spatial reference if provided
+    if active_feature and "geometry" in active_feature:
+        coords_latlon = [[c[1], c[0]] for c in active_feature["geometry"]["coordinates"]]
+        r_name = active_feature.get("properties", {}).get("name", "Active Corridor")
+        folium.PolyLine(
+            locations=coords_latlon,
+            color="#00E5FF",
+            weight=4,
+            opacity=0.9,
+            dash_array="6, 4",
+            tooltip=f"<b>{r_name}</b>",
+            name=r_name
+        ).add_to(m)
 
     # Add SideBySide split controller
     sbs = plugins.SideBySideLayers(layer_left=layer_left, layer_right=layer_right)

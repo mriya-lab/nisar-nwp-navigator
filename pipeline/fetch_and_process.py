@@ -85,8 +85,9 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
         dx = float(grid["xCoordinateSpacing"][()])
         dy = float(grid["yCoordinateSpacing"][()])
         
-        # Decimation step to ensure lightweight COG output (~1000x1000 pixels)
-        step = 4 if len(ys) > 2000 else 1
+        # Adaptive decimation step to ensure lightweight COG output (~1000x1000 pixels)
+        max_dim = max(len(ys), len(xs))
+        step = max(1, round(max_dim / 1000))
         
         # Extract backscatter fields (datasets are direct children of grid)
         if "HHHH" in grid and "HVHV" in grid:
@@ -174,10 +175,10 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
     bottom = top - (effective_dy * h_rows)
     bbox_wgs84 = list(transform_bounds(crs_str, "EPSG:4326", left, bottom, right, top))
 
-    # Write RGB Cloud-Optimized GeoTIFF (3-band uint8, compressed)
+    # Write RGB Cloud-Optimized GeoTIFF (3-band uint8, COG driver)
     with rasterio.open(
         out_rgb_path, "w",
-        driver="GTiff",
+        driver="COG",
         height=h_rows, width=w_cols,
         count=3, dtype=np.uint8,
         crs=crs_str, transform=transform,
@@ -188,10 +189,10 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
         dst.set_band_description(2, "Green (HV Backscatter)")
         dst.set_band_description(3, "Blue (HH/HV Ratio)")
 
-    # Write Hazard Classification GeoTIFF (1-band uint8, compressed)
+    # Write Hazard Classification Cloud-Optimized GeoTIFF (1-band uint8, COG driver)
     with rasterio.open(
         out_hazard_path, "w",
-        driver="GTiff",
+        driver="COG",
         height=h_rows, width=w_cols,
         count=1, dtype=np.uint8,
         crs=crs_str, transform=transform,
@@ -202,10 +203,16 @@ def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[st
 
     print(f"[EXPORT] Successfully generated COG rasters at {out_rgb_path} and {out_hazard_path}")
     
+    # Build human-readable stage label
+    parts = output_prefix.split("_")
+    track_info = f"Track {parts[5]}" if len(parts) > 5 else output_prefix[:24]
+    stage_label = f"{timestamp[:10]} — NISAR {polarization} ({track_info})"
+
     metadata = {
         "granule_id": output_prefix,
         "timestamp": timestamp,
         "polarization": polarization,
+        "stage_label": stage_label,
         "bbox_wgs84": bbox_wgs84,
         "crs": crs_str
     }
@@ -231,11 +238,13 @@ def append_to_manifest(granule_id: str, rgb_path: str, hazard_path: str, metadat
     timestamp = metadata.get("timestamp") or metadata.get("acquisition_date") or "2026-09-15T12:00:00Z"
     pol = metadata.get("polarization", "Dual-Pol")
     bbox = metadata.get("bbox_wgs84")
+    stage_label = metadata.get("stage_label") or f"{timestamp[:10]} — NISAR {pol} ({granule_id[:28]})"
 
     record = {
         "granule_id": granule_id,
         "timestamp": timestamp,
         "polarization": pol,
+        "stage_label": stage_label,
         "bbox_wgs84": bbox,
         "rgb_path": rgb_path,
         "hazard_path": hazard_path

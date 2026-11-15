@@ -11,7 +11,7 @@ import os
 import json
 import numpy as np
 import rasterio
-from rasterio.warp import transform_bounds
+from rasterio.warp import transform_bounds, calculate_default_transform, reproject, Resampling
 from typing import Dict, Any, Tuple, List, Optional
 from PIL import Image
 import io
@@ -155,19 +155,59 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         src_bounds = src.bounds
         src_transform = src.transform
         src_shape = src.shape
+        needs_reproject = bool(crs and str(crs).upper() not in ["EPSG:4326", "WGS84"])
 
-        # Reproject bounds to EPSG:4326 for Folium
-        if crs and str(crs).upper() not in ["EPSG:4326", "WGS84"]:
-            w, s, e, n = transform_bounds(crs, "EPSG:4326", *src_bounds)
+        if needs_reproject:
+            dst_crs = "EPSG:4326"
+            warp_transform, warp_w, warp_h = calculate_default_transform(
+                crs, dst_crs, src.width, src.height, *src_bounds
+            )
+            w = warp_transform.c
+            n = warp_transform.f
+            e = w + (warp_transform.a * warp_w)
+            s = n + (warp_transform.e * warp_h)
         else:
             w, s, e, n = src_bounds.left, src_bounds.bottom, src_bounds.right, src_bounds.top
 
-    # Check if bbox_wgs84 override is present in manifest
-    if record.get("bbox_wgs84") and len(record["bbox_wgs84"]) == 4:
+    if not needs_reproject and record.get("bbox_wgs84") and len(record["bbox_wgs84"]) == 4:
         bw, bs, be, bn = record["bbox_wgs84"]
         bounds_folium = [[bs, bw], [bn, be]]
     else:
         bounds_folium = [[s, w], [n, e]]
+
+    def _warp_to_wgs84(arr: np.ndarray, resampling=Resampling.nearest, nodata_val=0) -> np.ndarray:
+        if not needs_reproject:
+            return arr
+        if arr.ndim == 2:
+            dst = np.full((warp_h, warp_w), nodata_val, dtype=arr.dtype)
+            reproject(
+                source=arr,
+                destination=dst,
+                src_transform=src_transform,
+                src_crs=crs,
+                dst_transform=warp_transform,
+                dst_crs="EPSG:4326",
+                resampling=resampling,
+                src_nodata=nodata_val,
+                dst_nodata=nodata_val,
+            )
+            return dst
+        # 3D array (H, W, C) -> transpose to (C, H, W), warp, transpose back
+        c = arr.shape[2]
+        src_chw = np.transpose(arr, (2, 0, 1))
+        dst_chw = np.zeros((c, warp_h, warp_w), dtype=arr.dtype)
+        reproject(
+            source=src_chw,
+            destination=dst_chw,
+            src_transform=src_transform,
+            src_crs=crs,
+            dst_transform=warp_transform,
+            dst_crs="EPSG:4326",
+            resampling=resampling,
+            src_nodata=0,
+            dst_nodata=0,
+        )
+        return np.transpose(dst_chw, (1, 2, 0))
 
     # Process Hazard Layer
     if hazard_path and os.path.exists(hazard_path):
@@ -177,13 +217,14 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         # Fallback empty hazard grid
         hazard = np.ones(src_shape, dtype=np.uint8)
 
-    # Process or Generate Hazard RGBA
-    h_h, h_w = hazard.shape
+    # Warp hazard for accurate EPSG:4326 web map overlay
+    hazard_display = _warp_to_wgs84(hazard, resampling=Resampling.nearest, nodata_val=0)
+    h_h, h_w = hazard_display.shape
     hazard_rgba = np.zeros((h_h, h_w, 4), dtype=np.uint8)
     # Class 0: Nodata / Transparent
-    hazard_rgba[hazard == 1] = [21, 101, 192, 190]   # Open Water Blue
-    hazard_rgba[hazard == 2] = [0, 188, 212, 205]    # First-Year Ice Cyan
-    hazard_rgba[hazard == 3] = [213, 0, 0, 230]      # Multi-Year Ice Red
+    hazard_rgba[hazard_display == 1] = [21, 101, 192, 190]   # Open Water Blue
+    hazard_rgba[hazard_display == 2] = [0, 188, 212, 205]    # First-Year Ice Cyan
+    hazard_rgba[hazard_display == 3] = [213, 0, 0, 230]      # Multi-Year Ice Red
     hazard_data_url = array_to_base64_png(hazard_rgba)
 
     # Process RGB Layer
@@ -195,39 +236,55 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
                 # Alpha channel with transparency for nodata (0, 0, 0)
                 is_data = (rgb_t[:, :, 0] > 0) | (rgb_t[:, :, 1] > 0) | (rgb_t[:, :, 2] > 0)
                 alpha = np.where(is_data, 220, 0).astype(np.uint8)
-                rgb_rgba = np.dstack([rgb_t, alpha])
+                rgb_rgba_native = np.dstack([rgb_t, alpha])
                 
-                # Approximate calibrated dB values for distribution histograms
+                # Approximate calibrated dB values for distribution histograms (mask nodata as NaN)
                 r_norm = rgb_t[:, :, 0].astype(np.float32) / 255.0
                 g_norm = rgb_t[:, :, 1].astype(np.float32) / 255.0
-                hh_db = -28.0 + (r_norm * 22.0)
-                hv_db = -34.0 + (g_norm * 22.0)
+                hh_db = np.where(is_data, -28.0 + (r_norm * 22.0), np.nan)
+                hv_db = np.where(is_data, -34.0 + (g_norm * 22.0), np.nan)
             elif r_src.count == 2:
                 # 2-band float backscatter (HH, HV)
-                hh_db = r_src.read(1)
-                hv_db = r_src.read(2)
-                rgb_rgba = generate_dualpol_rgb(hh_db, hv_db)
+                hh_db = r_src.read(1).astype(np.float32)
+                hv_db = r_src.read(2).astype(np.float32)
+                hh_db = np.where(hh_db > -900, hh_db, np.nan)
+                hv_db = np.where(hv_db > -900, hv_db, np.nan)
+                rgb_rgba_native = generate_dualpol_rgb(
+                    np.nan_to_num(hh_db, nan=-28.0),
+                    np.nan_to_num(hv_db, nan=-34.0)
+                )
             else:
-                hh_db = r_src.read(1)
+                hh_db = r_src.read(1).astype(np.float32)
+                hh_db = np.where(hh_db > -900, hh_db, np.nan)
                 hv_db = hh_db - 8.0
-                rgb_rgba = generate_dualpol_rgb(hh_db, hv_db)
+                rgb_rgba_native = generate_dualpol_rgb(
+                    np.nan_to_num(hh_db, nan=-28.0),
+                    np.nan_to_num(hv_db, nan=-34.0)
+                )
     else:
         # Reconstruct pseudo-RGB from hazard
-        hh_db = np.where(hazard == 3, -11.0, np.where(hazard == 2, -17.0, -23.0))
-        hv_db = np.where(hazard == 3, -16.0, np.where(hazard == 2, -25.0, -32.0))
-        rgb_rgba = generate_dualpol_rgb(hh_db, hv_db)
+        hh_db = np.where(hazard == 3, -11.0, np.where(hazard == 2, -17.0, np.where(hazard == 1, -23.0, np.nan)))
+        hv_db = np.where(hazard == 3, -16.0, np.where(hazard == 2, -25.0, np.where(hazard == 1, -32.0, np.nan)))
+        rgb_rgba_native = generate_dualpol_rgb(
+            np.nan_to_num(hh_db, nan=-28.0),
+            np.nan_to_num(hv_db, nan=-34.0)
+        )
 
+    rgb_rgba = _warp_to_wgs84(rgb_rgba_native, resampling=Resampling.nearest, nodata_val=0)
     rgb_data_url = array_to_base64_png(rgb_rgba)
 
     # Calculate ice concentration statistics excluding nodata (0)
-    valid_mask = (hazard >= 1) & (hazard <= 3)
-    total_valid = int(np.sum(valid_mask))
+    valid_mask = (hazard >= 1) & (hazard <= 3) & np.isfinite(hh_db) & np.isfinite(hv_db)
+    total_valid = int(np.sum((hazard >= 1) & (hazard <= 3)))
     if total_valid > 0:
         p1 = float(np.sum(hazard == 1) / total_valid * 100.0)
         p2 = float(np.sum(hazard == 2) / total_valid * 100.0)
         p3 = float(np.sum(hazard == 3) / total_valid * 100.0)
     else:
         p1, p2, p3 = 100.0, 0.0, 0.0
+
+    mean_hh = float(np.nanmean(hh_db[valid_mask])) if np.any(valid_mask) else -22.0
+    mean_hv = float(np.nanmean(hv_db[valid_mask])) if np.any(valid_mask) else -30.0
 
     stage_name = record.get("stage_label", scene_id)
     acq_date = record.get("timestamp", "2026-09-15")
@@ -239,8 +296,8 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         "phase": f"NISAR Ingested Swath ({record.get('polarization', 'L-band')})",
         "summary": f"NISAR L2 GCOV Observation: {scene_id}",
         "ice_condition": f"Classified Ice: {p1:.1f}% Water, {p2:.1f}% FYI, {p3:.1f}% MYI",
-        "typical_hh": f"Estimated Mean {np.mean(hh_db[valid_mask] if total_valid > 0 else hh_db):.1f} dB",
-        "typical_hv": f"Estimated Mean {np.mean(hv_db[valid_mask] if total_valid > 0 else hv_db):.1f} dB",
+        "typical_hh": f"Estimated Mean {mean_hh:.1f} dB",
+        "typical_hv": f"Estimated Mean {mean_hv:.1f} dB",
         "hh_db": hh_db,
         "hv_db": hv_db,
         "hazard": hazard,
@@ -255,8 +312,8 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         "open_water_pct": p1,
         "fyi_pct": p2,
         "myi_pct": p3,
-        "mean_hh_db": float(np.mean(hh_db[valid_mask] if total_valid > 0 else hh_db)),
-        "mean_hv_db": float(np.mean(hv_db[valid_mask] if total_valid > 0 else hv_db)),
+        "mean_hh_db": mean_hh,
+        "mean_hv_db": mean_hv,
         "source_type": "Real NISAR L2 GCOV GeoTIFF (from manifest.json)"
     }
 

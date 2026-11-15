@@ -13,6 +13,7 @@ import numpy as np
 import rasterio
 from rasterio.transform import rowcol
 from shapely.geometry import shape, LineString, Point
+from shapely.ops import transform as shapely_transform
 from typing import Dict, Any, Union, List, Optional
 import pyproj
 
@@ -122,11 +123,19 @@ def sample_route_hazard(
     else:
         raise ValueError("route_geom must be a Shapely geometry or GeoJSON dictionary")
 
-    # Interpolate equidistant points along corridor (in EPSG:4326)
+    # Interpolate equidistant points in metric Polar Stereographic North (EPSG:3413)
+    # so waypoints are evenly spaced in nautical miles regardless of high-latitude meridian convergence
+    to_3413 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3413", always_xy=True)
+    to_4326 = pyproj.Transformer.from_crs("EPSG:3413", "EPSG:4326", always_xy=True)
+    line_metric = shapely_transform(to_3413.transform, line)
+
     t_vals = np.linspace(0.0, 1.0, num_samples)
-    pts = [line.interpolate(t, normalized=True) for t in t_vals]
-    xs = np.array([p.x for p in pts], dtype=np.float64)
-    ys = np.array([p.y for p in pts], dtype=np.float64)
+    pts_metric = [line_metric.interpolate(t, normalized=True) for t in t_vals]
+    mx = np.array([p.x for p in pts_metric], dtype=np.float64)
+    my = np.array([p.y for p in pts_metric], dtype=np.float64)
+    xs, ys = to_4326.transform(mx, my)
+    xs = np.asarray(xs, dtype=np.float64)
+    ys = np.asarray(ys, dtype=np.float64)
 
     # Sample raster values
     if isinstance(hazard_source, str):
@@ -169,6 +178,7 @@ def sample_route_hazard(
     valid_mask = (sampled >= 1) & (sampled <= 3)
     valid_sampled = sampled[valid_mask]
     total_valid = len(valid_sampled)
+    swath_coverage_pct = round(float(total_valid / len(sampled) * 100.0), 1) if len(sampled) > 0 else 0.0
 
     if total_valid == 0:
         return {
@@ -180,6 +190,7 @@ def sample_route_hazard(
             "myi_count": 0,
             "total_samples": len(sampled),
             "valid_samples": 0,
+            "swath_coverage_pct": 0.0,
             "mean_hazard_tier": 1.0,
             "sampled_hazard": sampled,
             "sample_points": list(zip(xs, ys))
@@ -202,6 +213,7 @@ def sample_route_hazard(
         "myi_count": c3,
         "total_samples": len(sampled),
         "valid_samples": total_valid,
+        "swath_coverage_pct": swath_coverage_pct,
         "mean_hazard_tier": round(float(np.mean(valid_sampled)), 2),
         "sampled_hazard": sampled,
         "sample_points": list(zip(xs, ys))
@@ -213,7 +225,8 @@ def compute_vessel_telemetry(
     open_water_pct: float,
     fyi_pct: float,
     myi_pct: float,
-    vessel_class: str = "Polar Class 6"
+    vessel_class: str = "Polar Class 6",
+    swath_coverage_pct: float = 100.0
 ) -> Dict[str, Any]:
     """
     Computes operational status, transit delay, and fuel penalty for a given vessel class.
@@ -224,6 +237,7 @@ def compute_vessel_telemetry(
         fyi_pct: Percentage of First-Year Ice (Class 2) along route.
         myi_pct: Percentage of Multi-Year / Ridged Ice (Class 3) along route.
         vessel_class: Name of vessel profile.
+        swath_coverage_pct: Percentage of route covered by valid SAR swath data.
         
     Returns:
         Structured dictionary of operational telemetry metrics.
@@ -236,7 +250,11 @@ def compute_vessel_telemetry(
     fuel_rate = profile["baseline_fuel_rate_tons_hour"]
 
     # 1. Determine Operational Status (NAVIGABLE, CAUTION, BLOCKED)
-    if (myi_pct > limits["myi_block"]) or (fyi_pct > limits["fyi_block"]):
+    if swath_coverage_pct <= 0.0:
+        status = "CAUTION"
+        status_color = "#FFB300"  # Amber
+        reason = "Corridor lies outside the active SAR granule swath footprint (0% radar coverage). Verify with adjacent orbital track."
+    elif (myi_pct > limits["myi_block"]) or (fyi_pct > limits["fyi_block"]):
         status = "BLOCKED"
         status_color = "#D50000"  # Red
         if myi_pct > limits["myi_block"]:
@@ -251,6 +269,9 @@ def compute_vessel_telemetry(
         status = "NAVIGABLE"
         status_color = "#00E676"  # Emerald Green
         reason = f"Corridor open ({open_water_pct:.1f}% open water). Negligible ice risk within nominal vessel operating parameters."
+
+    if 0.0 < swath_coverage_pct < 100.0:
+        reason += f" (SAR swath covers {swath_coverage_pct:.0f}% of corridor)."
 
     # 2. Compute Baseline Transit Metrics (Calm Open Water)
     t0_hours = distance_nm / v0
@@ -342,17 +363,18 @@ def evaluate_corridor(
     p1 = breakdown["open_water_pct"]
     p2 = breakdown["fyi_pct"]
     p3 = breakdown["myi_pct"]
+    cov = breakdown.get("swath_coverage_pct", 100.0)
 
     # Evaluate vessel telemetry
     if vessel_class is not None and vessel_class in VESSEL_PROFILES:
-        telemetry = compute_vessel_telemetry(dist_nm, p1, p2, p3, vessel_class)
+        telemetry = compute_vessel_telemetry(dist_nm, p1, p2, p3, vessel_class, swath_coverage_pct=cov)
         all_profiles = {
-            vname: compute_vessel_telemetry(dist_nm, p1, p2, p3, vname)
+            vname: compute_vessel_telemetry(dist_nm, p1, p2, p3, vname, swath_coverage_pct=cov)
             for vname in VESSEL_PROFILES
         }
     else:
         all_profiles = {
-            vname: compute_vessel_telemetry(dist_nm, p1, p2, p3, vname)
+            vname: compute_vessel_telemetry(dist_nm, p1, p2, p3, vname, swath_coverage_pct=cov)
             for vname in VESSEL_PROFILES
         }
         telemetry = all_profiles["Polar Class 6"]

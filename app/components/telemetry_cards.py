@@ -142,7 +142,10 @@ def render_corridor_comparison_table(evaluations: List[Dict[str, Any]], active_r
                 "Risk Index": f"{t['risk_index']} / 100"
             })
 
-        st.table(rows)
+        st.table(
+            rows,
+            alt="Tactical routing comparison matrix of shipping corridors by status, distance, transit time, fuel burn, multi-year ice percentage, and risk index",
+        )
 
         # Tactical recommendation callout
         if len(evaluations) >= 2:
