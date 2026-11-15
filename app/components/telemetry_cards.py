@@ -5,9 +5,43 @@ Polar Code operational status badges, ice hazard concentration breakdowns,
 and comparative corridor optimization matrices.
 """
 
+import os
 import base64
+from functools import lru_cache
 import streamlit as st
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+ASSETS_VESSELS_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "assets", "vessels")
+)
+
+VESSEL_PHOTO_SPECS: Dict[str, Dict[str, str]] = {
+    "Standard Cargo": {
+        "filename": "standard_cargo.jpg",
+        "caption": "Representative: Open-Water Bulk Carrier (14 mm mild steel hull)",
+        "alt": "Representative open-water bulk carrier and container vessel in calm water",
+    },
+    "Polar Class 6": {
+        "filename": "polar_class_6.jpg",
+        "caption": "Representative: Polar Class 6 / 1A Super Ice-Strengthened Vessel",
+        "alt": "Representative Polar Class 6 / 1A Super ice-strengthened vessel navigating sea ice",
+    },
+    "Heavy Icebreaker": {
+        "filename": "heavy_icebreaker.jpg",
+        "caption": "Representative: CCGS Louis S. St-Laurent (Heavy Arctic Icebreaker)",
+        "alt": "CCGS Louis S. St-Laurent heavy Arctic icebreaker",
+    },
+}
+
+
+@lru_cache(maxsize=8)
+def _load_vessel_photo_b64(filename: str) -> Optional[str]:
+    """Reads and base64-encodes a cached vessel photo from assets/vessels/."""
+    path = os.path.join(ASSETS_VESSELS_DIR, filename)
+    if not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("ascii")
 
 
 def render_route_status_banner(telemetry: Dict[str, Any], route_name: str):
@@ -262,8 +296,26 @@ def render_vessel_svg_card(vessel_class: str):
         """
 
     b64_svg = base64.b64encode(svg_markup.strip().encode("utf-8")).decode("ascii")
+    photo_spec = VESSEL_PHOTO_SPECS.get(
+        vessel_class, VESSEL_PHOTO_SPECS["Heavy Icebreaker"]
+    )
+    photo_b64 = _load_vessel_photo_b64(photo_spec["filename"])
+    photo_html = ""
+    if photo_b64:
+        photo_html = (
+            f'<img src="data:image/jpeg;base64,{photo_b64}" '
+            f'alt="{photo_spec["alt"]}" '
+            f'style="width: 100%; height: 92px; max-height: 95px; object-fit: cover; '
+            f'border-radius: 6px; display: block; border: 1px solid #1E2D42;" />'
+            f'<div style="margin: 4px 0 6px 0; color: #94A3B8; font-size: 0.72rem; '
+            f'font-style: italic; text-align: center; line-height: 1.25;">'
+            f'{photo_spec["caption"]}</div>'
+        )
+
     html = (
-        f'<div style="margin: 4px 0 10px 0;">'
+        f'<div style="margin: 4px 0 10px 0; padding: 6px; border-radius: 8px; '
+        f'background: #0B121E; border: 1px solid #1E2D42;">'
+        f'{photo_html}'
         f'<img src="data:image/svg+xml;base64,{b64_svg}" '
         f'alt="{vessel_class} technical hull profile" '
         f'style="width: 100%; height: 85px; display: block; border-radius: 6px;" />'
