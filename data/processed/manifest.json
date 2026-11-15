@@ -1,28 +1,54 @@
 [
-  {
-    "granule_id": "NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001",
-    "timestamp": "2026-08-14T05:46:12Z",
-    "polarization": "VVVV",
-    "bbox_wgs84": [
-      -106.19758172234167,
-      73.79327057973829,
-      -85.45833865307978,
-      78.76558036854684
-    ],
-    "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_rgb.tif",
-    "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_hazard.tif"
-  },
-  {
-    "granule_id": "NISAR_L2_PR_GCOV_035_017_A_040_0005_NASV_A_20261106T090230_20261106T090305_P05036_N_F_J_001",
-    "timestamp": "2026-11-06T09:02:30Z",
-    "polarization": "VVVV",
-    "bbox_wgs84": [
-      -105.16159886254356,
-      71.43542257676609,
-      -92.44617279478344,
-      75.12260502458719
-    ],
-    "rgb_path": "data/processed/NISAR_L2_PR_GCOV_035_017_A_040_0005_NASV_A_20261106T090230_20261106T090305_P05036_N_F_J_001_rgb.tif",
-    "hazard_path": "data/processed/NISAR_L2_PR_GCOV_035_017_A_040_0005_NASV_A_20261106T090230_20261106T090305_P05036_N_F_J_001_hazard.tif"
-  }
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_028_158_D_049_4005_DHDH_A_20260824T035109_20260824T035140_P05023_N_F_J_001",
+        "timestamp": "2026-08-24T03:51:09Z",
+        "polarization": "DHDH",
+        "bbox_wgs84": [
+            -95.68677094496694,
+            72.28480143174961,
+            -80.7011451755248,
+            76.3706910141207
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_158_D_049_4005_DHDH_A_20260824T035109_20260824T035140_P05023_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_158_D_049_4005_DHDH_A_20260824T035109_20260824T035140_P05023_N_F_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_034_002_A_041_4005_DHDH_A_20261024T080448_20261024T080518_P05036_N_F_J_001",
+        "timestamp": "2026-10-24T08:04:48Z",
+        "polarization": "DHDH",
+        "bbox_wgs84": [
+            -97.77804436829007,
+            72.257200083195,
+            -82.54901493971327,
+            76.39928259098663
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_034_002_A_041_4005_DHDH_A_20261024T080448_20261024T080518_P05036_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_034_002_A_041_4005_DHDH_A_20261024T080448_20261024T080518_P05036_N_F_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001",
+        "timestamp": "2026-08-14T05:46:12Z",
+        "polarization": "VVVV",
+        "bbox_wgs84": [
+            -106.1915436677146,
+            73.7934065843058,
+            -85.45183440545739,
+            78.76577978812966
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_028_015_D_046_0005_NASV_A_20260814T054612_20260814T054641_P05023_N_F_J_001_hazard.tif"
+    },
+    {
+        "granule_id": "NISAR_L2_PR_GCOV_035_017_A_040_0005_NASV_A_20261106T090230_20261106T090305_P05036_N_F_J_001",
+        "timestamp": "2026-11-06T09:02:30Z",
+        "polarization": "VVVV",
+        "bbox_wgs84": [
+            -105.15657838064368,
+            71.43563736079385,
+            -92.4407793926304,
+            75.12287179239952
+        ],
+        "rgb_path": "data/processed/NISAR_L2_PR_GCOV_035_017_A_040_0005_NASV_A_20261106T090230_20261106T090305_P05036_N_F_J_001_rgb.tif",
+        "hazard_path": "data/processed/NISAR_L2_PR_GCOV_035_017_A_040_0005_NASV_A_20261106T090230_20261106T090305_P05036_N_F_J_001_hazard.tif"
+    }
 ]

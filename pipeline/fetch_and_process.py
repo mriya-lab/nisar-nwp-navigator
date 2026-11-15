@@ -14,6 +14,8 @@ import argparse
 import numpy as np
 import rasterio
 from rasterio.transform import from_origin
+from rasterio.warp import transform_bounds
+from typing import Tuple, Dict, Any, List
 
 # Ensure parent directory is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -53,63 +55,168 @@ def query_asf_vertex(wkt_geometry: str, start_date: str = "2026-08-01T00:00:00Z"
         return []
 
 
-def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple_str:
+def hdf5_to_cog(h5_filepath: str, output_prefix: str) -> Tuple[str, str, Dict[str, Any]]:
     """
     Extracts backscatter matrix from NISAR HDF5 granule, converts power ratios 
     to decibels (dB), applies georeferenced coordinate bounds, and writes as Cloud-Optimized GeoTIFFs (COGs).
+    Exports lightweight _rgb.tif and _hazard.tif rasters adhering to GEMINI ringfencing rules.
     """
     import h5py
 
     print(f"[TRANSFORM] Processing NISAR HDF5 granule: {h5_filepath}")
-    out_cog_path = os.path.join(PROCESSED_DIR, f"{output_prefix}.tif")
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+    out_rgb_path = os.path.join(PROCESSED_DIR, f"{output_prefix}_rgb.tif")
     out_hazard_path = os.path.join(PROCESSED_DIR, f"{output_prefix}_hazard.tif")
     
     with h5py.File(h5_filepath, "r") as f:
         # Standard NISAR L2 GCOV HDF5 layer hierarchy
-        hh_raw = f["/science/LSAR/GCOV/grids/frequencyA/HHHH/backscatterFields"][:]
-        hv_raw = f["/science/LSAR/GCOV/grids/frequencyA/HVHV/backscatterFields"][:]
+        grids = f["science/LSAR/GCOV/grids"]
         
-        # Convert linear power backscatter to decibels (dB)
-        hh_db = 10.0 * np.log10(np.where(hh_raw > 0, hh_raw, 1e-5))
-        hv_db = 10.0 * np.log10(np.where(hv_raw > 0, hv_raw, 1e-5))
+        # Prefer frequencyB for lightweight processing (multi-looked, ~4000x4000)
+        freq = "frequencyB" if "frequencyB" in grids else list(grids.keys())[0]
+        grid = grids[freq]
+        
+        # Spatial reference and coordinate grid
+        epsg = int(grid["projection"][()]) if "projection" in grid else 3413
+        crs_str = f"EPSG:{epsg}"
+        
+        xs = grid["xCoordinates"][:]
+        ys = grid["yCoordinates"][:]
+        dx = float(grid["xCoordinateSpacing"][()])
+        dy = float(grid["yCoordinateSpacing"][()])
+        
+        # Decimation step to ensure lightweight COG output (~1000x1000 pixels)
+        step = 4 if len(ys) > 2000 else 1
+        
+        # Extract backscatter fields (datasets are direct children of grid)
+        if "HHHH" in grid and "HVHV" in grid:
+            hh_raw = grid["HHHH"][::step, ::step]
+            hv_raw = grid["HVHV"][::step, ::step]
+            polarization = "DHDH"
+        elif "VVVV" in grid and "VHVH" in grid:
+            hh_raw = grid["VVVV"][::step, ::step]
+            hv_raw = grid["VHVH"][::step, ::step]
+            polarization = "DVDV"
+        elif "VVVV" in grid:
+            hh_raw = grid["VVVV"][::step, ::step]
+            hv_raw = hh_raw * 0.15  # Synthetic cross-pol estimate for single-pol VVVV
+            polarization = "VVVV"
+        elif "HHHH" in grid:
+            hh_raw = grid["HHHH"][::step, ::step]
+            hv_raw = hh_raw * 0.15
+            polarization = "HHHH"
+        else:
+            # Fallback to available numerical datasets
+            avail_terms = [k for k in grid.keys() if isinstance(grid[k], h5py.Dataset) and k in ["HHHH", "HVHV", "VVVV", "VHVH"]]
+            hh_raw = grid[avail_terms[0]][::step, ::step]
+            hv_raw = grid[avail_terms[1]][::step, ::step] if len(avail_terms) > 1 else hh_raw * 0.15
+            polarization = avail_terms[0] if avail_terms else "Unknown"
 
-    # Deterministic 3-Tier Ice Hazard classification
-    hazard = np.ones_like(hh_db, dtype=np.uint8)
-    hazard[(hv_db >= -27.0) | (hh_db >= -20.0)] = 2
-    hazard[(hv_db >= -19.5) & (hh_db >= -14.0)] = 3
+        # Timestamp and metadata
+        ident = f.get("science/LSAR/identification")
+        if ident and "zeroDopplerStartTime" in ident:
+            raw_time = ident["zeroDopplerStartTime"][()]
+            if isinstance(raw_time, bytes):
+                raw_time = raw_time.decode("utf-8")
+            timestamp = raw_time[:19] + "Z"
+        else:
+            # Parse from filename if available (e.g. 20260824T035109)
+            parts = output_prefix.split("_")
+            time_part = [p for p in parts if len(p) == 15 and "T" in p]
+            if time_part:
+                t = time_part[0]
+                timestamp = f"{t[:4]}-{t[4:6]}-{t[6:8]}T{t[9:11]}:{t[11:13]}:{t[13:15]}Z"
+            else:
+                timestamp = "2026-09-15T12:00:00Z"
 
-    # Default Barrow Strait Transform if not specified in HDF5 metadata
-    transform = from_origin(-98.5, 75.2, 8.5 / hh_db.shape[1], 1.4 / hh_db.shape[0])
-    
+    # Convert linear power backscatter to decibels (dB)
+    valid_hh = (hh_raw > 1e-6) & np.isfinite(hh_raw)
+    valid_hv = (hv_raw > 1e-6) & np.isfinite(hv_raw)
+    valid_mask = valid_hh & valid_hv
+
+    hh_db = np.where(valid_hh, 10.0 * np.log10(np.maximum(hh_raw, 1e-6)), -9999.0)
+    hv_db = np.where(valid_hv, 10.0 * np.log10(np.maximum(hv_raw, 1e-6)), -9999.0)
+
+    # 3-Tier Ice Hazard classification:
+    # 0: nodata / masked, 1: Open Water, 2: First-Year Ice, 3: Multi-Year / Ridged Ice
+    hazard = np.zeros_like(hh_db, dtype=np.uint8)
+    hazard[valid_mask] = 1
+    hazard[valid_mask & ((hv_db >= -27.0) | (hh_db >= -20.0))] = 2
+    hazard[valid_mask & ((hv_db >= -19.5) & (hh_db >= -14.0))] = 3
+
+    # Normalized False-Color RGB composite:
+    # R: HHHH normalized [-28, -6] dB
+    # G: HVHV normalized [-34, -12] dB
+    # B: HH - HV difference normalized [4, 16] dB
+    r = np.clip((hh_db - (-28.0)) / ((-6.0) - (-28.0)), 0.0, 1.0) * 255.0
+    g = np.clip((hv_db - (-34.0)) / ((-12.0) - (-34.0)), 0.0, 1.0) * 255.0
+    diff = hh_db - hv_db
+    b = np.clip((diff - 4.0) / (16.0 - 4.0), 0.0, 1.0) * 255.0
+
+    r[~valid_mask] = 0
+    g[~valid_mask] = 0
+    b[~valid_mask] = 0
+
+    rgb = np.stack([r.astype(np.uint8), g.astype(np.uint8), b.astype(np.uint8)])
+
+    # Georeferencing affine transform
+    x0 = float(xs[0]) - (dx / 2.0)
+    y0 = float(ys[0]) - (dy / 2.0)
+    effective_dx = dx * step
+    effective_dy = abs(dy) * step
+    transform = from_origin(x0, y0, effective_dx, effective_dy)
+
+    # Compute bounding box in EPSG:4326 (WGS84)
+    h_rows, w_cols = hh_db.shape
+    left = x0
+    top = y0
+    right = left + (effective_dx * w_cols)
+    bottom = top - (effective_dy * h_rows)
+    bbox_wgs84 = list(transform_bounds(crs_str, "EPSG:4326", left, bottom, right, top))
+
+    # Write RGB Cloud-Optimized GeoTIFF (3-band uint8, compressed)
     with rasterio.open(
-        out_cog_path, "w",
+        out_rgb_path, "w",
         driver="GTiff",
-        height=hh_db.shape[0], width=hh_db.shape[1],
-        count=2, dtype=np.float32,
-        crs="EPSG:4326", transform=transform
+        height=h_rows, width=w_cols,
+        count=3, dtype=np.uint8,
+        crs=crs_str, transform=transform,
+        compress="deflate"
     ) as dst:
-        dst.write(hh_db.astype(np.float32), 1)
-        dst.write(hv_db.astype(np.float32), 2)
-        dst.set_band_description(1, "HHHH Backscatter (dB)")
-        dst.set_band_description(2, "HVHV Backscatter (dB)")
+        dst.write(rgb)
+        dst.set_band_description(1, "Red (HH Backscatter)")
+        dst.set_band_description(2, "Green (HV Backscatter)")
+        dst.set_band_description(3, "Blue (HH/HV Ratio)")
 
+    # Write Hazard Classification GeoTIFF (1-band uint8, compressed)
     with rasterio.open(
         out_hazard_path, "w",
         driver="GTiff",
-        height=hazard.shape[0], width=hazard.shape[1],
+        height=h_rows, width=w_cols,
         count=1, dtype=np.uint8,
-        crs="EPSG:4326", transform=transform
+        crs=crs_str, transform=transform,
+        nodata=0, compress="deflate"
     ) as dst:
-        dst.write(hazard.astype(np.uint8), 1)
+        dst.write(hazard, 1)
         dst.set_band_description(1, "Ice Hazard Tier (1: Water, 2: FYI, 3: MYI)")
 
-    print(f"[EXPORT] Successfully generated COG rasters at {out_cog_path} and {out_hazard_path}")
-    return out_cog_path, out_hazard_path
+    print(f"[EXPORT] Successfully generated COG rasters at {out_rgb_path} and {out_hazard_path}")
+    
+    metadata = {
+        "granule_id": output_prefix,
+        "timestamp": timestamp,
+        "polarization": polarization,
+        "bbox_wgs84": bbox_wgs84,
+        "crs": crs_str
+    }
+    
+    return out_rgb_path, out_hazard_path, metadata
 
 
-def append_to_manifest(granule_id: str, cog_path: str, hazard_path: str, metadata: dict):
+def append_to_manifest(granule_id: str, rgb_path: str, hazard_path: str, metadata: dict):
     """
     Maintains systemic state integrity by tracking outputs in data/processed/manifest.json.
+    Supports both list and dictionary schemas.
     """
     os.makedirs(PROCESSED_DIR, exist_ok=True)
     if os.path.exists(MANIFEST_PATH):
@@ -117,19 +224,37 @@ def append_to_manifest(granule_id: str, cog_path: str, hazard_path: str, metadat
             with open(MANIFEST_PATH, "r") as f:
                 manifest = json.load(f)
         except json.JSONDecodeError:
-            manifest = {}
+            manifest = []
     else:
-        manifest = {}
+        manifest = []
 
-    manifest[granule_id] = {
+    timestamp = metadata.get("timestamp") or metadata.get("acquisition_date") or "2026-09-15T12:00:00Z"
+    pol = metadata.get("polarization", "Dual-Pol")
+    bbox = metadata.get("bbox_wgs84")
+
+    record = {
         "granule_id": granule_id,
-        "cog_filepath": cog_path,
-        "hazard_filepath": hazard_path,
-        "processed_timestamp": "2026-11-14T17:00:00Z",
-        "acquisition_date": metadata.get("acquisition_date", "2026-09-15"),
-        "stage_label": metadata.get("stage_label", granule_id),
-        "metadata": metadata
+        "timestamp": timestamp,
+        "polarization": pol,
+        "bbox_wgs84": bbox,
+        "rgb_path": rgb_path,
+        "hazard_path": hazard_path
     }
+
+    if isinstance(manifest, list):
+        # Update existing record or append new
+        existing = False
+        for i, item in enumerate(manifest):
+            if isinstance(item, dict) and item.get("granule_id") == granule_id:
+                manifest[i] = record
+                existing = True
+                break
+        if not existing:
+            manifest.append(record)
+    elif isinstance(manifest, dict):
+        manifest[granule_id] = record
+    else:
+        manifest = [record]
 
     with open(MANIFEST_PATH, "w") as f:
         json.dump(manifest, f, indent=4)
@@ -146,20 +271,16 @@ def run_pipeline(generate_sample_cogs: bool = False):
     
     # Check for raw granules in data/raw
     os.makedirs(RAW_DIR, exist_ok=True)
-    raw_files = [f for f in os.listdir(RAW_DIR) if f.endswith(".h5") or f.endswith(".hdf5")]
+    raw_files = [f for f in sorted(os.listdir(RAW_DIR)) if f.endswith(".h5") or f.endswith(".hdf5")]
     
     if raw_files:
         print(f"[PIPELINE] Found {len(raw_files)} raw HDF5 granules in {RAW_DIR}.")
         for h5_file in raw_files:
             h5_path = os.path.join(RAW_DIR, h5_file)
             prefix = os.path.splitext(h5_file)[0]
-            cog_path, hazard_path = hdf5_to_cog(h5_path, prefix)
-            append_to_manifest(prefix, cog_path, hazard_path, {
-                "source": "raw_hdf5_granule",
-                "platform": "NISAR",
-                "frequency": "L-band",
-                "processing_level": "L2 GCOV"
-            })
+            rgb_path, hazard_path, meta = hdf5_to_cog(h5_path, prefix)
+            append_to_manifest(prefix, rgb_path, hazard_path, meta)
+        print(f"[PIPELINE] All {len(raw_files)} raw granules processed and tracked in {MANIFEST_PATH}.")
     else:
         # Search ASF Vertex for live granules over Barrow Strait
         sample_wkt = "POLYGON((-98.5 73.8, -90.0 73.8, -90.0 75.2, -98.5 75.2, -98.5 73.8))"

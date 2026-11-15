@@ -5,6 +5,8 @@ data/raw/*
 # Ignore processed data outputs
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/*.tif
+!data/processed/manifest.json
 data/gis/*
 !data/gis/.gitkeep
 !data/gis/*.geojson
