@@ -100,17 +100,18 @@ with st.sidebar.expander("📡 Data Source & Manifest Monitor", expanded=True):
             title="🟢 Engine Mode: Real NISAR GeoTIFFs",
         )
 
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("🌱 Seed COGs", help="Generates calibrated GeoTIFFs and populates manifest.json", width="stretch"):
-            seed_demo_manifest_cogs()
-            st.cache_data.clear()
-            st.rerun()
-    with col_btn2:
-        if st.button("🧹 Clear Manifest", help="Removes manifest.json to test automatic fallback mode", width="stretch"):
-            clear_manifest_for_fallback_testing()
-            st.cache_data.clear()
-            st.rerun()
+    if os.getenv("NISAR_ALLOW_DATA_EDITS") == "1":
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("🌱 Seed COGs", help="Generates calibrated GeoTIFFs and populates manifest.json", width="stretch"):
+                seed_demo_manifest_cogs()
+                st.cache_data.clear()
+                st.rerun()
+        with col_btn2:
+            if st.button("🧹 Clear Manifest", help="Removes manifest.json to test automatic fallback mode", width="stretch"):
+                clear_manifest_for_fallback_testing()
+                st.cache_data.clear()
+                st.rerun()
 
 st.sidebar.divider()
 
@@ -229,31 +230,18 @@ active_scene = _cached_load_scene_dataset(
     manifest_mtime,
 )
 
-# Evaluate all corridors for comparison table and active route
+# Evaluate all corridors against the scene shown on the map.
 all_corridor_evaluations = []
 evaluations_dict = {}
-
-from shapely.geometry import shape as _shp_shape, box as _shp_box
-_s_bounds = active_scene["bounds"]
-_active_scene_box = _shp_box(_s_bounds[0][1], _s_bounds[0][0], _s_bounds[1][1], _s_bounds[1][0])
 
 for feat in routes_geojson.get("features", []):
     rid = feat["properties"].get("route_id", feat["properties"]["name"])
     nominal_dist = feat["properties"].get("nominal_length_nm")
-    scene_for_eval = active_scene
-    if not manifest_status["is_fallback"] and not _shp_shape(feat["geometry"]).intersects(_active_scene_box):
-        _, pref_lbl = _find_overlapping_mosaic_for_feature(feat, manifest_status["scenes"])
-        if pref_lbl and pref_lbl in scene_choices and scene_choices[pref_lbl] != active_scene_id:
-            scene_for_eval = _cached_load_scene_dataset(
-                scene_choices[pref_lbl],
-                manifest_status["is_fallback"],
-                manifest_mtime,
-            )
     eval_res = evaluate_corridor(
         route_geom=feat["geometry"],
-        hazard_source=scene_for_eval.get("hazard_source", scene_for_eval["hazard"]),
-        transform=scene_for_eval["transform"],
-        crs=scene_for_eval.get("crs"),
+        hazard_source=active_scene.get("hazard_source", active_scene["hazard"]),
+        transform=active_scene["transform"],
+        crs=active_scene.get("crs"),
         vessel_class=selected_vessel,
         nominal_length_nm=nominal_dist
     )
@@ -270,7 +258,11 @@ active_breakdown = active_eval["breakdown"]
 # MAIN APPLICATION INTERFACE
 # ==========================================
 st.title("🛳️ Northwest Passage SAR Ice Navigator")
-st.caption("2026 NASA Space Apps Challenge ('Dancing with the SARs') — Real-time L-Band Radar Tactical Maritime Decision Support")
+source_label = (
+    "Scenes use synthetic data." if manifest_status["is_fallback"]
+    else "Radar scenes show historical conditions."
+)
+st.caption(f"NASA Space Apps Challenge demo. {source_label} Use this app for exploration only.")
 
 # Top Level Status Alert
 render_route_status_banner(active_telemetry, selected_route_name)
@@ -303,7 +295,7 @@ if tab_tactical.open:
 
         with col_map:
             st.subheader("Tactical Radar Overlay & Route Vectors")
-            st.caption(f"Displaying **{selected_scene_label}** with active **{selected_vessel}** corridor risk.")
+            st.caption(f"Displaying **{selected_scene_label}** for **{selected_vessel}**.")
 
             tactical_map = create_tactical_folium_map(
                 scene_dataset=active_scene,
@@ -329,11 +321,12 @@ if tab_tactical.open:
             render_ice_breakdown_bars(active_breakdown)
 
             # Ice Class Proportion Donut Chart
-            render_ice_donut_chart(
-                active_breakdown["open_water_pct"],
-                active_breakdown["fyi_pct"],
-                active_breakdown["myi_pct"]
-            )
+            if active_breakdown["valid_samples"]:
+                render_ice_donut_chart(
+                    active_breakdown["open_water_pct"],
+                    active_breakdown["fyi_pct"],
+                    active_breakdown["myi_pct"]
+                )
 
             with st.container(border=True):
                 st.markdown("**Vessel Capability Specifications**")
@@ -341,8 +334,9 @@ if tab_tactical.open:
                 st.caption(active_telemetry["designation"])
                 render_vessel_svg_card(active_telemetry["vessel_class"])
                 st.markdown(f"• **Baseline Speed:** `{active_telemetry['nominal_speed_knots']} knots`")
-                st.markdown(f"• **Effective Speed:** `{active_telemetry['effective_speed_knots']} knots`")
-                st.markdown(f"• **Excess Fuel Penalty:** `+{active_telemetry['excess_fuel_penalty_tons']} Tons`")
+                if active_telemetry["effective_speed_knots"] is not None:
+                    st.markdown(f"• **Effective Speed:** `{active_telemetry['effective_speed_knots']} knots`")
+                    st.markdown(f"• **Excess Fuel Penalty:** `+{active_telemetry['excess_fuel_penalty_tons']} Tons`")
 
         # 3. Decision Matrix & Histograms
         st.markdown("---")
@@ -452,15 +446,8 @@ if tab_swipe.open:
             alt=f"Split-screen comparison map between {left_ds['name']} and {right_ds['name']}",
         )
 
-        with st.container(border=True):
-            st.markdown("### 🔍 The Barrow Strait Choke Phenomenon Explained")
-            st.markdown("""
-            In late summer, polar pack ice from the Queen Elizabeth Islands drifts southward through **McDougall Sound** and **Wellington Channel**, funneled directly across the northern deep-water route past Resolute Bay. 
-            
-            * **August:** Wide-open water window allows unreinforced vessels to navigate at full cruising speed (14 kn) with negligible fuel penalties.
-            * **September Intrusion:** Severe influx of thick, desalinated multi-year ice floes (3–4 meters thick with intense pressure ridges) creates an impassable barrier for Standard Cargo and unescorted Polar Class 6 ships.
-            * **Tactical Mitigation:** SAR tactical routing enables navigators to divert south along Somerset Island's northern coastline, circumventing the choke point entirely and eliminating over 50 hours of ice delay.
-            """)
+        st.caption("A mosaic can combine passes from several dates. Check the date and coverage of each scene before comparing conditions.")
+
 
 
 # ==========================================

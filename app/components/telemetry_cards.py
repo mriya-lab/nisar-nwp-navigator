@@ -53,13 +53,10 @@ def render_route_status_banner(telemetry: Dict[str, Any], route_name: str):
 
     if status == "NAVIGABLE":
         badge_icon = "🟢"
-        callout_type = st.success
-    elif status == "CAUTION":
+    elif status in {"CAUTION", "UNASSESSED"}:
         badge_icon = "🟡"
-        callout_type = st.warning
     else:
         badge_icon = "🔴"
-        callout_type = st.error
 
     with st.container(border=True):
         st.markdown(
@@ -77,11 +74,19 @@ def render_route_status_banner(telemetry: Dict[str, Any], route_name: str):
             """,
             unsafe_allow_html=True
         )
-        st.markdown(f"**Polar Code Assessment:** {reason}")
+        st.markdown(reason)
 
 
 def render_kpi_metrics(telemetry: Dict[str, Any]):
     """Renders the top KPI metrics in a 4-column row."""
+    if telemetry["actual_transit_hours"] is None:
+        distance, coverage, transit, fuel = st.columns(4)
+        distance.metric("Corridor Distance", f"{telemetry['distance_nm']} NM")
+        coverage.metric("Route Sample Coverage", f"{telemetry['swath_coverage_pct']:.1f}%")
+        transit.metric("Estimated Transit Time", "Unavailable")
+        fuel.metric("Projected Fuel Burn", "Unavailable")
+        return
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -130,7 +135,12 @@ def render_ice_breakdown_bars(breakdown: Dict[str, Any]):
     """Renders progress breakdown of Open Water, FYI, and MYI."""
     with st.container(border=True):
         st.markdown("**Corridor Ice Composition Breakdown**")
-        st.caption("Sampled at 350 georeferenced coordinates along the active transit route.")
+        valid = breakdown["valid_samples"]
+        total = breakdown["total_samples"]
+        st.caption(f"Ice classes at {valid} of {total} route sample points.")
+        if not valid:
+            st.info("This scene has no usable data at the route sample points.")
+            return
 
         p1 = breakdown["open_water_pct"]
         p2 = breakdown["fyi_pct"]
@@ -151,7 +161,7 @@ def render_corridor_comparison_table(evaluations: List[Dict[str, Any]], active_r
     """
     with st.container(border=True):
         st.markdown("### 🧭 Tactical Routing Decision Matrix")
-        st.caption("Direct comparison of primary and alternate passage corridors under current SAR ice conditions.")
+        st.caption("Both routes use the scene shown on the map. Ice percentages describe usable samples only.")
 
         rows = []
         for item in evaluations:
@@ -161,21 +171,23 @@ def render_corridor_comparison_table(evaluations: List[Dict[str, Any]], active_r
             is_active = (r_info["route_id"] == active_route_id)
             active_marker = " 🎯 [Selected]" if is_active else ""
 
-            status_icon = "🟢" if t["status"] == "NAVIGABLE" else ("🟡" if t["status"] == "CAUTION" else "🔴")
+            status_icon = "🟢" if t["status"] == "NAVIGABLE" else ("🔴" if t["status"] == "BLOCKED" else "🟡")
+            has_estimate = t["actual_transit_hours"] is not None
 
             rows.append({
                 "Corridor Route": f"{r_info['name']}{active_marker}",
                 "Status": f"{status_icon} {t['status']}",
                 "Distance": f"{t['distance_nm']} NM",
-                "Est. Transit Time": f"{t['actual_transit_hours']} h (+{t['transit_delay_hours']}h)",
-                "Fuel Burn": f"{t['total_fuel_tons']} t (+{t['excess_fuel_penalty_tons']}t, +{t['fuel_penalty_pct']}%)",
-                "MYI %": f"{b['myi_pct']:.1f}%",
-                "Risk Index": f"{t['risk_index']} / 100"
+                "Route Sample Coverage": f"{b['swath_coverage_pct']:.1f}%",
+                "Est. Transit Time": f"{t['actual_transit_hours']} h (+{t['transit_delay_hours']}h)" if has_estimate else "Unavailable",
+                "Fuel Burn": f"{t['total_fuel_tons']} t (+{t['excess_fuel_penalty_tons']}t, +{t['fuel_penalty_pct']}%)" if has_estimate else "Unavailable",
+                "MYI %": f"{b['myi_pct']:.1f}%" if b["valid_samples"] else "Unavailable",
+                "Risk Index": f"{t['risk_index']} / 100" if has_estimate else "Unavailable"
             })
 
         st.table(
             rows,
-            alt="Tactical routing comparison matrix of shipping corridors by status, distance, transit time, fuel burn, multi-year ice percentage, and risk index",
+            alt="Shipping corridor comparison by status, distance, sample coverage, transit time, fuel burn, multi-year ice percentage, and risk index",
         )
 
         # Tactical recommendation callout
@@ -184,6 +196,9 @@ def render_corridor_comparison_table(evaluations: List[Dict[str, Any]], active_r
             r2 = evaluations[1]
             t1 = r1["telemetry"]
             t2 = r2["telemetry"]
+
+            if any(t["actual_transit_hours"] is None for t in (t1, t2)):
+                return
 
             if t1["status"] == "BLOCKED" and t2["status"] != "BLOCKED":
                 st.warning(
