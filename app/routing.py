@@ -12,9 +12,8 @@ and fuel-burn penalties across three distinct vessel profiles:
 import numpy as np
 import rasterio
 from rasterio.transform import rowcol
-from rasterio.warp import transform_bounds
-from shapely.geometry import shape, LineString, Point, box
-from shapely.ops import transform as shapely_transform, linemerge
+from shapely.geometry import shape, LineString
+from shapely.ops import transform as shapely_transform
 from typing import Dict, Any, Union, List, Optional
 import pyproj
 
@@ -124,46 +123,12 @@ def sample_route_hazard(
     else:
         raise ValueError("route_geom must be a Shapely geometry or GeoJSON dictionary")
 
-    # Determine raster WGS84 bounding box so end-to-end routes concentrate sampling
-    # across the covered chokepoint swath when intersecting a regional SAR mosaic
-    raster_box_wgs84 = None
-    if isinstance(hazard_source, str):
-        with rasterio.open(hazard_source) as src:
-            b = src.bounds
-            if src.crs and str(src.crs).upper() not in ["EPSG:4326", "WGS84"]:
-                w, s, e, n = transform_bounds(src.crs, "EPSG:4326", b.left, b.bottom, b.right, b.top)
-            else:
-                w, s, e, n = b.left, b.bottom, b.right, b.top
-            raster_box_wgs84 = box(w, s, e, n)
-    elif isinstance(hazard_source, np.ndarray) and transform is not None:
-        H, W = hazard_source.shape
-        left = transform.c
-        top = transform.f
-        right = left + (transform.a * W)
-        bottom = top + (transform.e * H)
-        w, s, e, n = min(left, right), min(bottom, top), max(left, right), max(bottom, top)
-        if crs and str(crs).upper() not in ["EPSG:4326", "WGS84", "NONE"]:
-            w, s, e, n = transform_bounds(crs, "EPSG:4326", w, s, e, n)
-        raster_box_wgs84 = box(w, s, e, n)
-
-    line_to_sample = line
-    if raster_box_wgs84 is not None and not raster_box_wgs84.contains(line) and line.intersects(raster_box_wgs84):
-        clipped = line.intersection(raster_box_wgs84.buffer(-1e-4))
-        if not clipped.is_empty:
-            if clipped.geom_type == "MultiLineString":
-                merged = linemerge(clipped)
-                if merged.geom_type == "LineString":
-                    line_to_sample = merged
-                else:
-                    line_to_sample = max(merged.geoms, key=lambda g: g.length)
-            elif clipped.geom_type == "LineString" and clipped.length > 0:
-                line_to_sample = clipped
-
+    # Sample the full route so locations outside the scene count as missing.
     # Interpolate equidistant points in metric Polar Stereographic North (EPSG:3413)
     # so waypoints are evenly spaced in nautical miles regardless of high-latitude meridian convergence
     to_3413 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3413", always_xy=True)
     to_4326 = pyproj.Transformer.from_crs("EPSG:3413", "EPSG:4326", always_xy=True)
-    line_metric = shapely_transform(to_3413.transform, line_to_sample)
+    line_metric = shapely_transform(to_3413.transform, line)
 
     t_vals = np.linspace(0.0, 1.0, num_samples)
     pts_metric = [line_metric.interpolate(t, normalized=True) for t in t_vals]
@@ -214,11 +179,11 @@ def sample_route_hazard(
     valid_mask = (sampled >= 1) & (sampled <= 3)
     valid_sampled = sampled[valid_mask]
     total_valid = len(valid_sampled)
-    swath_coverage_pct = round(float(total_valid / len(sampled) * 100.0), 1) if len(sampled) > 0 else 0.0
+    swath_coverage_pct = total_valid / len(sampled) * 100.0 if len(sampled) else 0.0
 
     if total_valid == 0:
         return {
-            "open_water_pct": 100.0,
+            "open_water_pct": 0.0,
             "fyi_pct": 0.0,
             "myi_pct": 0.0,
             "open_water_count": 0,
@@ -227,7 +192,7 @@ def sample_route_hazard(
             "total_samples": len(sampled),
             "valid_samples": 0,
             "swath_coverage_pct": 0.0,
-            "mean_hazard_tier": 1.0,
+            "mean_hazard_tier": None,
             "sampled_hazard": sampled,
             "sample_points": list(zip(xs, ys))
         }
@@ -273,7 +238,7 @@ def compute_vessel_telemetry(
         fyi_pct: Percentage of First-Year Ice (Class 2) along route.
         myi_pct: Percentage of Multi-Year / Ridged Ice (Class 3) along route.
         vessel_class: Name of vessel profile.
-        swath_coverage_pct: Percentage of route covered by valid SAR swath data.
+        swath_coverage_pct: Percentage of route sample points with a raster classification.
         
     Returns:
         Structured dictionary of operational telemetry metrics.
@@ -285,12 +250,35 @@ def compute_vessel_telemetry(
     v0 = profile["nominal_speed_knots"]
     fuel_rate = profile["baseline_fuel_rate_tons_hour"]
 
-    # 1. Determine Operational Status (NAVIGABLE, CAUTION, BLOCKED)
-    if swath_coverage_pct <= 0.0:
-        status = "CAUTION"
-        status_color = "#FFB300"  # Amber
-        reason = "Corridor lies outside the active SAR granule swath footprint (0% radar coverage). Verify with adjacent orbital track."
-    elif (myi_pct > limits["myi_block"]) or (fyi_pct > limits["fyi_block"]):
+    t0_hours = distance_nm / v0
+    f0_tons = t0_hours * fuel_rate
+    telemetry = {
+        "vessel_class": vessel_class,
+        "designation": profile["designation"],
+        "distance_nm": round(distance_nm, 1),
+        "nominal_speed_knots": v0,
+        "baseline_transit_hours": round(t0_hours, 1),
+        "baseline_fuel_tons": round(f0_tons, 2),
+        "swath_coverage_pct": swath_coverage_pct,
+    }
+    if swath_coverage_pct < 100.0:
+        return telemetry | {
+            "status": "UNASSESSED",
+            "status_color": "#FFB300",
+            "status_reason": (
+                f"The selected scene has usable data at {swath_coverage_pct:.1f}% "
+                "of route sample points. Full-route estimates require data at every sample point."
+            ),
+            "effective_speed_knots": None,
+            "actual_transit_hours": None,
+            "transit_delay_hours": None,
+            "total_fuel_tons": None,
+            "excess_fuel_penalty_tons": None,
+            "fuel_penalty_pct": None,
+            "risk_index": None,
+        }
+
+    if (myi_pct > limits["myi_block"]) or (fyi_pct > limits["fyi_block"]):
         status = "BLOCKED"
         status_color = "#D50000"  # Red
         if myi_pct > limits["myi_block"]:
@@ -305,13 +293,6 @@ def compute_vessel_telemetry(
         status = "NAVIGABLE"
         status_color = "#00E676"  # Emerald Green
         reason = f"Corridor open ({open_water_pct:.1f}% open water). Negligible ice risk within nominal vessel operating parameters."
-
-    if 0.0 < swath_coverage_pct < 100.0:
-        reason += f" (SAR swath covers {swath_coverage_pct:.0f}% of corridor)."
-
-    # 2. Compute Baseline Transit Metrics (Calm Open Water)
-    t0_hours = distance_nm / v0
-    f0_tons = t0_hours * fuel_rate
 
     # 3. Compute Segmented Transit Time & Fuel Burn
     fractions = {
@@ -349,19 +330,13 @@ def compute_vessel_telemetry(
     else:
         risk_score = min(100.0, raw_risk * 0.5)
 
-    return {
-        "vessel_class": vessel_class,
-        "designation": profile["designation"],
+    return telemetry | {
         "status": status,
         "status_color": status_color,
         "status_reason": reason,
-        "distance_nm": round(distance_nm, 1),
-        "nominal_speed_knots": v0,
         "effective_speed_knots": round(effective_speed, 1),
-        "baseline_transit_hours": round(t0_hours, 1),
         "actual_transit_hours": round(total_actual_hours, 1),
         "transit_delay_hours": round(transit_delay_hours, 1),
-        "baseline_fuel_tons": round(f0_tons, 2),
         "total_fuel_tons": round(total_projected_fuel, 2),
         "excess_fuel_penalty_tons": round(excess_fuel_tons, 2),
         "fuel_penalty_pct": round(fuel_penalty_pct, 1),
@@ -399,7 +374,7 @@ def evaluate_corridor(
     p1 = breakdown["open_water_pct"]
     p2 = breakdown["fyi_pct"]
     p3 = breakdown["myi_pct"]
-    cov = breakdown.get("swath_coverage_pct", 100.0)
+    cov = breakdown["swath_coverage_pct"]
 
     # Evaluate vessel telemetry
     if vessel_class is not None and vessel_class in VESSEL_PROFILES:
@@ -467,4 +442,12 @@ if __name__ == "__main__":
             )
             t = res["telemetry"]
             b = res["breakdown"]
-            print(f"Route: {feature['properties']['name'][:30]:30} | {t['status']:9} | Water: {b['open_water_pct']:5.1f}% | FYI: {b['fyi_pct']:5.1f}% | MYI: {b['myi_pct']:5.1f}% | Delay: +{t['transit_delay_hours']:4.1f}h | Excess Fuel: +{t['excess_fuel_penalty_tons']:4.1f}t (+{t['fuel_penalty_pct']}%)")
+            print(
+                f"Route: {feature['properties']['name'][:30]:30} | {t['status']:10} "
+                f"| Route sample coverage: {b['swath_coverage_pct']:5.1f}%"
+            )
+            if t["transit_delay_hours"] is not None:
+                print(
+                    f"  Delay: +{t['transit_delay_hours']:4.1f}h "
+                    f"| Excess fuel: +{t['excess_fuel_penalty_tons']:4.1f}t"
+                )

@@ -167,14 +167,15 @@ def create_tactical_folium_map(
         
         # Get evaluation status
         eval_item = evaluations.get(rid, {})
-        status = eval_item.get("telemetry", {}).get("status", "NAVIGABLE")
+        telemetry = eval_item.get("telemetry", {})
+        status = telemetry.get("status", "UNASSESSED")
         
         # Status driven styling
         if status == "BLOCKED":
             color = "#FF1744"  # Red
             weight = 6 if is_active else 3
             dash_array = "8, 6" if not is_active else None
-        elif status == "CAUTION":
+        elif status in {"CAUTION", "UNASSESSED"}:
             color = "#FFC107"  # Amber
             weight = 6 if is_active else 3
             dash_array = "6, 4" if not is_active else None
@@ -186,7 +187,9 @@ def create_tactical_folium_map(
         # Convert LineString coordinates [lon, lat] -> [lat, lon] for folium
         coords_latlon = [[c[1], c[0]] for c in feature["geometry"]["coordinates"]]
 
-        tooltip_text = f"<b>{r_props['name']}</b><br>Status: {status} ({eval_item.get('telemetry', {}).get('risk_index', 0)}/100 risk)"
+        tooltip_text = f"<b>{r_props['name']}</b><br>Status: {status}"
+        if telemetry.get("risk_index") is not None:
+            tooltip_text += f" ({telemetry['risk_index']}/100 risk)"
         
         folium.PolyLine(
             locations=coords_latlon,
@@ -200,7 +203,14 @@ def create_tactical_folium_map(
 
         # If this is the active route, place a vessel icon near the sampled chokepoint midpoint
         if is_active and len(coords_latlon) >= 2:
-            sampled_pts = eval_item.get("breakdown", {}).get("sample_points", [])
+            breakdown = eval_item.get("breakdown", {})
+            sampled_pts = [
+                point
+                for point, tier in zip(
+                    breakdown.get("sample_points", []), breakdown.get("sampled_hazard", [])
+                )
+                if 1 <= tier <= 3
+            ]
             if sampled_pts and not fit_full_passage:
                 sp_mid = sampled_pts[len(sampled_pts) // 2]
                 mid_pt = [float(sp_mid[1]), float(sp_mid[0])]

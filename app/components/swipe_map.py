@@ -189,12 +189,19 @@ def render_swipe_differential_metrics(
     st.markdown(f"#### 📊 Tactical Impact Differential: {left_dataset['name']} ⟷ {right_dataset['name']}")
     st.caption(f"Evaluated along **{route_name}**.")
 
-    col1, col2, col3, col4 = st.columns(4)
-
     t_left = left_eval["telemetry"]
     t_right = right_eval["telemetry"]
     b_left = left_eval["breakdown"]
     b_right = right_eval["breakdown"]
+
+    if any(t["actual_transit_hours"] is None for t in (t_left, t_right)):
+        left, right = st.columns(2)
+        left.metric("Left Scene Route Coverage", f"{b_left['swath_coverage_pct']:.1f}%")
+        right.metric("Right Scene Route Coverage", f"{b_right['swath_coverage_pct']:.1f}%")
+        st.caption("Full-route comparisons require usable data at every route sample point in both scenes.")
+        return
+
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         myi_delta = b_right["myi_pct"] - b_left["myi_pct"]

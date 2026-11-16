@@ -1,5 +1,5 @@
 # Core Framework & Interface
-streamlit>=1.40.0
+streamlit==1.67.0
 leafmap>=0.39.0
 folium>=0.17.0
 plotly>=5.24.0
