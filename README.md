@@ -48,6 +48,16 @@ streamlit run app/main.py
 
 ---
 
+## Resources
+
+### 1. Slides from presentation
+https://docs.google.com/presentation/d/1fuyA7FH7fCL-wMLWpxS2z7jm6FEtaRgXs_F1a1nQbd0
+
+### 2. Deployed app available for public use
+https://nisar-nwp-navigator.streamlit.app
+
+---
+
 ## 👥 Team Roles & Responsibilities
 * **Data Engineering Lead:** Manages ASF API automation, HDF5 layer flattening, and Cloud-Optimized GeoTIFF formatting within `pipeline/`.
 * **Maritime Logistics Analyst:** Maintains `app/routing.py` deterministic fuel burn penalties and ice hazard safety parameters.
