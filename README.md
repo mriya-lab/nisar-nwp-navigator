@@ -53,7 +53,7 @@ streamlit run app/main.py
 * **Slides from presentation:**
 https://docs.google.com/presentation/d/1fuyA7FH7fCL-wMLWpxS2z7jm6FEtaRgXs_F1a1nQbd0
 
-* **Deployed app available for public use:**
+* **Deployed app available for public exploration as a demo:**
 https://nisar-nwp-navigator.streamlit.app
 
 ---
