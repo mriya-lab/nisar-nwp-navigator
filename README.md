@@ -50,10 +50,10 @@ streamlit run app/main.py
 
 ## Resources
 
-### 1. Slides from presentation
+* **Slides from presentation:**
 https://docs.google.com/presentation/d/1fuyA7FH7fCL-wMLWpxS2z7jm6FEtaRgXs_F1a1nQbd0
 
-### 2. Deployed app available for public use
+* **Deployed app available for public use:**
 https://nisar-nwp-navigator.streamlit.app
 
 ---
