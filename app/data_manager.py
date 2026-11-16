@@ -32,6 +32,10 @@ PROCESSED_DIR = "data/processed"
 MANIFEST_PATH = os.path.join(PROCESSED_DIR, "manifest.json")
 
 
+def _synthetic_granule_id(date_str: str) -> str:
+    return f"NISAR_L2_GCOV_{date_str.replace('-', '')}_BARROW_STRAIT"
+
+
 def inspect_manifest() -> Dict[str, Any]:
     """
     Inspects data/processed/manifest.json and validates available scenes.
@@ -73,6 +77,7 @@ def inspect_manifest() -> Dict[str, Any]:
         raw_records = {}
 
     valid_scenes = {}
+    synthetic_ids = {_synthetic_granule_id(meta["date_str"]) for meta in STAGE_METADATA.values()}
     for gid, record in raw_records.items():
         # Check potential raster file paths
         rgb_path = record.get("rgb_path") or record.get("cog_filepath") or record.get("cog_path")
@@ -86,6 +91,9 @@ def inspect_manifest() -> Dict[str, Any]:
             primary_path = rgb_path if has_rgb else hazard_path
             timestamp = record.get("timestamp") or record.get("acquisition_date") or "2026-09-15"
             stage_label = record.get("stage_label") or f"{gid[:32]}... ({timestamp[:10]})"
+            is_synthetic = record.get("is_synthetic") is True or gid in synthetic_ids
+            if is_synthetic:
+                stage_label = f"Synthetic · {stage_label}"
             
             valid_scenes[gid] = {
                 "granule_id": gid,
@@ -95,6 +103,7 @@ def inspect_manifest() -> Dict[str, Any]:
                 "timestamp": timestamp,
                 "acquisition_date": timestamp,
                 "stage_label": stage_label,
+                "is_synthetic": is_synthetic,
                 "polarization": record.get("polarization", "Dual-Pol"),
                 "bbox_wgs84": record.get("bbox_wgs84"),
                 "raw_record": record
@@ -116,8 +125,8 @@ def inspect_manifest() -> Dict[str, Any]:
         "exists": True,
         "scene_count": count,
         "is_fallback": False,
-        "mode": "REAL_MANIFEST",
-        "message": f"Successfully loaded {count} validated NISAR L2 GCOV scenes from manifest.json.",
+        "mode": "GEOTIFF_MANIFEST",
+        "message": f"Loaded {count} validated GeoTIFF scenes from manifest.json.",
         "scenes": valid_scenes
     }
 
@@ -135,6 +144,7 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         if scene_id not in STAGE_METADATA:
             scene_id = "sep_myi_intrusion"
         ds = get_stage_dataset(scene_id)
+        ds["is_synthetic"] = True
         ds["source_type"] = "Calibrated Synthetic L-Band Simulation"
         return ds
 
@@ -142,6 +152,7 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
     record = manifest_info["scenes"].get(scene_id)
     if not record:
         ds = get_stage_dataset("sep_myi_intrusion")
+        ds["is_synthetic"] = True
         ds["source_type"] = "Calibrated Synthetic L-Band Simulation"
         return ds
 
@@ -210,8 +221,8 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         with rasterio.open(hazard_path) as h_src:
             hazard = h_src.read(1).astype(np.uint8)
     else:
-        # Fallback empty hazard grid
-        hazard = np.ones(src_shape, dtype=np.uint8)
+        hazard_path = None
+        hazard = np.zeros(src_shape, dtype=np.uint8)
 
     # Warp hazard to EPSG:4326 using Resampling.nearest for Folium ImageOverlay
     hazard_display = _warp_to_wgs84(hazard, resampling=Resampling.nearest, nodata_val=0)
@@ -287,21 +298,27 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         p2 = float(np.sum(hazard == 2) / total_valid * 100.0)
         p3 = float(np.sum(hazard == 3) / total_valid * 100.0)
     else:
-        p1, p2, p3 = 100.0, 0.0, 0.0
+        p1, p2, p3 = 0.0, 0.0, 0.0
 
     mean_hh = float(np.nanmean(hh_db[valid_mask])) if np.any(valid_mask) else -22.0
     mean_hv = float(np.nanmean(hv_db[valid_mask])) if np.any(valid_mask) else -30.0
 
     stage_name = record.get("stage_label", scene_id)
     acq_date = record.get("timestamp", "2026-09-15")
+    is_synthetic = record.get("is_synthetic", False)
+    ice_condition = (
+        f"Classified Ice: {p1:.1f}% Water, {p2:.1f}% FYI, {p3:.1f}% MYI"
+        if total_valid else "No classified ice data"
+    )
 
     return {
         "stage_id": scene_id,
+        "is_synthetic": is_synthetic,
         "name": stage_name,
         "date_str": acq_date,
-        "phase": f"NISAR Ingested Swath ({record.get('polarization', 'L-band')})",
-        "summary": f"NISAR L2 GCOV Observation: {scene_id}",
-        "ice_condition": f"Classified Ice: {p1:.1f}% Water, {p2:.1f}% FYI, {p3:.1f}% MYI",
+        "phase": f"GeoTIFF Scene ({record.get('polarization', 'L-band')})",
+        "summary": f"Synthetic scene: {scene_id}" if is_synthetic else f"NISAR L2 GCOV Observation: {scene_id}",
+        "ice_condition": ice_condition,
         "typical_hh": f"Estimated Mean {mean_hh:.1f} dB",
         "typical_hv": f"Estimated Mean {mean_hv:.1f} dB",
         "hh_db": hh_db,
@@ -321,7 +338,7 @@ def load_scene_dataset(scene_id: str, manifest_info: Optional[Dict[str, Any]] = 
         "myi_pct": p3,
         "mean_hh_db": mean_hh,
         "mean_hv_db": mean_hv,
-        "source_type": "Real NISAR L2 GCOV GeoTIFF (from manifest.json)"
+        "source_type": "Synthetic GeoTIFF" if is_synthetic else "NISAR L2 GCOV GeoTIFF (from manifest.json)"
     }
 
 
@@ -336,10 +353,11 @@ def seed_demo_manifest_cogs() -> int:
     for stage_id in ["aug_open_water", "sep_myi_intrusion", "oct_freeze_up"]:
         cog_path, hazard_path = write_synthetic_stage_to_cogs(stage_id, PROCESSED_DIR)
         meta = STAGE_METADATA[stage_id]
-        gid = f"NISAR_L2_GCOV_{meta['date_str'].replace('-', '')}_BARROW_STRAIT"
+        gid = _synthetic_granule_id(meta["date_str"])
         
         manifest.append({
             "granule_id": gid,
+            "is_synthetic": True,
             "timestamp": meta["date_str"] + "T12:00:00Z",
             "polarization": "Dual-Pol (HHHH, HVHV)",
             "stage_label": meta["name"],

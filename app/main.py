@@ -97,7 +97,7 @@ with st.sidebar.expander("📡 Data Source & Manifest Monitor", expanded=True):
     else:
         st.success(
             f"*Loaded {manifest_status['scene_count']} validated scenes from manifest.json.*",
-            title="🟢 Engine Mode: Real NISAR GeoTIFFs",
+            title="🟢 Engine Mode: GeoTIFF Manifest",
         )
 
     if os.getenv("NISAR_ALLOW_DATA_EDITS") == "1":
@@ -259,8 +259,8 @@ active_breakdown = active_eval["breakdown"]
 # ==========================================
 st.title("🛳️ Northwest Passage SAR Ice Navigator")
 source_label = (
-    "Scenes use synthetic data." if manifest_status["is_fallback"]
-    else "Radar scenes show historical conditions."
+    "The selected scene uses synthetic data." if active_scene["is_synthetic"]
+    else "The selected radar scene shows historical conditions."
 )
 st.caption(f"NASA Space Apps Challenge demo. {source_label} Use this app for exploration only.")
 
@@ -620,10 +620,10 @@ footer_col1, footer_col2 = st.columns([2, 1])
 
 with footer_col1:
     st.caption("Northwest Passage SAR Ice Navigator | 2026 NASA Space Apps Challenge ('Dancing with the SARs')")
-    st.caption("Antigravity Maritime Autonomous Decision Matrix — Powered by NISAR L2 GCOV Radar Observations")
+    st.caption(active_scene["source_type"])
 
 with footer_col2:
     if manifest_status["is_fallback"]:
         st.caption("Active State: Calibrated Synthetic Barrow Strait Fallback Mode")
     else:
-        st.caption(f"Active State: Real Manifest Mode ({manifest_status['scene_count']} scenes loaded)")
+        st.caption(f"Active State: GeoTIFF Manifest ({manifest_status['scene_count']} scenes loaded)")

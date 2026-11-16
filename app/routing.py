@@ -238,7 +238,7 @@ def compute_vessel_telemetry(
         fyi_pct: Percentage of First-Year Ice (Class 2) along route.
         myi_pct: Percentage of Multi-Year / Ridged Ice (Class 3) along route.
         vessel_class: Name of vessel profile.
-        swath_coverage_pct: Percentage of route covered by valid SAR swath data.
+        swath_coverage_pct: Percentage of route sample points with a raster classification.
         
     Returns:
         Structured dictionary of operational telemetry metrics.
@@ -442,4 +442,12 @@ if __name__ == "__main__":
             )
             t = res["telemetry"]
             b = res["breakdown"]
-            print(f"Route: {feature['properties']['name'][:30]:30} | {t['status']:9} | Water: {b['open_water_pct']:5.1f}% | FYI: {b['fyi_pct']:5.1f}% | MYI: {b['myi_pct']:5.1f}% | Delay: +{t['transit_delay_hours']:4.1f}h | Excess Fuel: +{t['excess_fuel_penalty_tons']:4.1f}t (+{t['fuel_penalty_pct']}%)")
+            print(
+                f"Route: {feature['properties']['name'][:30]:30} | {t['status']:10} "
+                f"| Route sample coverage: {b['swath_coverage_pct']:5.1f}%"
+            )
+            if t["transit_delay_hours"] is not None:
+                print(
+                    f"  Delay: +{t['transit_delay_hours']:4.1f}h "
+                    f"| Excess fuel: +{t['excess_fuel_penalty_tons']:4.1f}t"
+                )

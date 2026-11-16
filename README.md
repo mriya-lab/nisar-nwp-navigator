@@ -55,8 +55,10 @@ streamlit run app/main.py
    loads the bundled scenes and that both map views work.
 
 The app uses the historical scenes in the repository. The hosted demo needs
-no secrets. It withholds full-route estimates if any route sample point lacks
-usable data. For local fallback testing, set `NISAR_ALLOW_DATA_EDITS=1` before
+no secrets. Route sample coverage measures how many sample points have an ice
+classification in the processed raster. Mosaics can include filled pixels.
+The app withholds full-route estimates if any sample point lacks a
+classification. For local fallback testing, set `NISAR_ALLOW_DATA_EDITS=1` before
 starting Streamlit to show the controls that change the local manifest.
 
 ---
